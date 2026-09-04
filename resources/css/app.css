@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-primary-50: #fef2f2;
+  --color-primary-100: #fee2e2;
+  --color-primary-200: #fecaca;
+  --color-primary-300: #fca5a5;
+  --color-primary-400: #f87171;
+  --color-primary-500: #dc2626;
+  --color-primary-600: #b91c1c;
+  --color-primary-700: #991b1b;
+  --color-primary-800: #7f1d1d;
+  --color-primary-900: #450a0a;
+}
+
+/* Clases propias (docs 02 § Sistema de diseño) */
+.card {
+  @apply rounded-xl border border-stone-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#1c1917];
+}
+.table {
+  @apply w-full text-sm text-stone-900 dark:text-stone-100;
+}
+.table thead th {
+  @apply bg-stone-100 px-3 py-2 text-left font-semibold dark:bg-stone-800;
+}
+.table tbody td {
+  @apply border-t border-stone-200 px-3 py-2 dark:border-white/10;
+}
+.table tbody tr:hover {
+  @apply bg-stone-50 dark:bg-white/5;
+}
+.badge {
+  @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+}
+.badge-primary {
+  @apply bg-primary-100 text-primary-800 dark:bg-primary-900/50 dark:text-red-200;
+}
+.badge-success {
+  @apply bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200;
+}
+.badge-danger {
+  @apply bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200;
+}
+.badge-warning {
+  @apply bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200;
+}
+.badge-gray {
+  @apply bg-stone-200 text-stone-700 dark:bg-white/10 dark:text-stone-300;
+}
