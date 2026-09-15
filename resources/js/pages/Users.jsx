@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowsUpDownIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
+import { ArrowsUpDownIcon, BriefcaseIcon, ChevronDownIcon, ChevronUpIcon, KeyIcon, PencilSquareIcon, PowerIcon } from '@heroicons/react/24/outline';
 import api from '../lib/api';
 import { RoleGuard } from '../components/layout/RoleGuard';
 import { Button, Input, Modal, PasswordInput, Select } from '../components/ui/controls';
@@ -17,8 +17,10 @@ const COLS = [
 export default function Users() {
     const { toastSuccess, toastError } = useToast();
     const [rows, setRows] = useState([]);
+    const [total, setTotal] = useState(0);
     const [totalPages, setTotalPages] = useState(1);
     const [page, setPage] = useState(1);
+    const limit = 20;
     const [search, setSearch] = useState('');
     const [role, setRole] = useState('');
     const [active, setActive] = useState('');
@@ -30,9 +32,10 @@ export default function Users() {
     const load = async () => {
         try {
             const r = await api.get('/users', {
-                params: { search, role, isActive: active, page, limit: 20, sortBy, sortOrder },
+                params: { search, role, isActive: active, page, limit, sortBy, sortOrder },
             });
             setRows(r.data.data);
+            setTotal(r.data.total ?? 0);
             setTotalPages(r.data.totalPages);
         } catch {
             toastError('No se pudo cargar usuarios.');
@@ -129,7 +132,7 @@ export default function Users() {
                         <thead>
                             <tr>
                                 {COLS.map(([k, l]) => th(k, l))}
-                                <th>Acciones</th>
+                                <th className="text-center">Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -144,21 +147,26 @@ export default function Users() {
                                         <span className={`badge ${u.isActive ? 'badge-success' : 'badge-danger'}`}>{u.isActive ? 'Activo' : 'Inactivo'}</span>
                                         {u.canBackfill && <span className="badge badge-warning ml-1">Retroactivo</span>}
                                     </td>
-                                    <td className="whitespace-nowrap">
-                                        <Button size="sm" variant="secondary" onClick={() => { setForm({ ...u, position: u.active_position?.position || '', department: u.active_position?.department || '' }); setModal('position'); }}>Cargo</Button>{' '}
-                                        <Button size="sm" variant="secondary" onClick={() => { setForm(u); setModal('edit'); }}>Editar</Button>{' '}
-                                        <Button size="sm" variant="secondary" onClick={() => resetPass(u.id)}>Reset</Button>{' '}
-                                        <Button size="sm" variant="danger" onClick={() => { setForm(u); setModal('deactivate'); }}>Off</Button>
+                                    <td className="whitespace-nowrap text-right">
+                                        <div className="flex justify-end gap-1">
+                                            <Button size="sm" variant="secondary" title="Cambiar cargo" onClick={() => { setForm({ ...u, position: u.active_position?.position || '', department: u.active_position?.department || '' }); setModal('position'); }}><BriefcaseIcon className="mr-1 h-4 w-4" />Cargo</Button>
+                                            <Button size="sm" variant="secondary" title="Editar usuario" onClick={() => { setForm(u); setModal('edit'); }}><PencilSquareIcon className="mr-1 h-4 w-4" />Editar</Button>
+                                            <Button size="sm" variant="secondary" title="Resetear contraseña" onClick={() => resetPass(u.id)}><KeyIcon className="mr-1 h-4 w-4" />Reset</Button>
+                                            <Button size="sm" variant="danger" title="Desactivar usuario" onClick={() => { setForm(u); setModal('deactivate'); }}><PowerIcon className="mr-1 h-4 w-4" />Off</Button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <Button size="sm" variant="secondary" disabled={page <= 1} onClick={() => setPage(page - 1)}>‹</Button>
                     <span className="text-sm">{page} / {totalPages}</span>
                     <Button size="sm" variant="secondary" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>›</Button>
+                    <span className="ml-auto text-sm text-stone-500 dark:text-wa-muted">
+                        Mostrando {rows.length} de {total} usuarios · {limit} por página
+                    </span>
                 </div>
             </div>
 
@@ -188,7 +196,7 @@ export default function Users() {
                     <label className="flex items-center gap-2 text-sm">
                         <input type="checkbox" checked={!!form.canBackfill} onChange={(e) => setForm({ ...form, canBackfill: e.target.checked })} /> Registrar fechas anteriores
                     </label>
-                    <p className="text-xs text-stone-500">El permiso retroactivo expira al cambiar de día.</p>
+                    <p className="text-xs text-stone-500 dark:text-wa-muted">El permiso retroactivo expira al cambiar de día.</p>
                     <Button type="submit">Guardar</Button>
                 </form>
             </Modal>

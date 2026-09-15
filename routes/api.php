@@ -65,6 +65,7 @@ Route::prefix('reports')->middleware(['auth:sanctum', 'role:ADMIN|JEFE'])->group
     Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
     Route::get('/dashboard/weekly', [DashboardController::class, 'weekly']);
     Route::get('/dashboard/range', [DashboardController::class, 'range']);
+    Route::get('/dashboard/daily', [DashboardController::class, 'daily']);
     Route::post('/preview', [ReportController::class, 'preview']);
     Route::post('/generate', [ReportController::class, 'generate']);
     Route::get('/', [ReportController::class, 'index']);

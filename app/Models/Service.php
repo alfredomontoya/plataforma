@@ -13,7 +13,7 @@ class Service extends Model
     public const TYPE_ENTREGA = 'ENTREGA';
 
     protected $fillable = [
-        'name', 'abreviation', 'type', 'isActive', 'sortOrder',
+        'name', 'codigo', 'abreviation', 'type', 'isActive', 'sortOrder',
     ];
 
     protected function casts(): array

@@ -61,6 +61,28 @@ class DashboardReportsTest extends TestCase
         $this->assertEquals(4, $res->json('data.totalEntrega'));
         $this->assertCount(2, $res->json('data.operators'));
         $this->assertEquals('SI', $res->json('data.ingreso.0.abreviation'));
+        // Contrato: total numérico (MySQL devuelve SUM() como string).
+        $this->assertIsInt($res->json('data.ingreso.0.total'));
+    }
+
+    public function test_dashboard_daily_devuelve_totales_por_dia(): void
+    {
+        $jefe = $this->jefe();
+        $today = now('UTC')->toDateString();
+        $yesterday = now('UTC')->subDay()->toDateString();
+        $this->seedDay($today, 10, 4);
+        $this->seedDay($yesterday, 5, 2);
+
+        $res = $this->actingAs($jefe, 'sanctum')->getJson("/api/reports/dashboard/daily?from={$yesterday}&to={$today}");
+        $res->assertOk();
+        $this->assertCount(2, $res->json('data'));
+        $this->assertEquals($yesterday, $res->json('data.0.date'));
+        $this->assertEquals(5, $res->json('data.0.ingreso'));
+        $this->assertEquals(2, $res->json('data.0.entrega'));
+        $this->assertEquals(10, $res->json('data.1.ingreso'));
+        $this->assertIsInt($res->json('data.1.ingreso'));
+        // rango inválido (fin antes que inicio)
+        $this->actingAs($jefe, 'sanctum')->getJson("/api/reports/dashboard/daily?from={$today}&to={$yesterday}")->assertStatus(400);
     }
 
     public function test_dashboard_weekly_y_range_con_tope(): void
@@ -72,6 +94,9 @@ class DashboardReportsTest extends TestCase
         $w = $this->actingAs($jefe, 'sanctum')->getJson("/api/reports/dashboard/weekly?weekStart={$monday}");
         $w->assertOk();
         $this->assertEquals(6, $w->json('data.totalIngreso'));
+        // Desglose por servicio también en semana (tortas visibles fuera del día).
+        $this->assertEquals('SI', $w->json('data.ingresoByService.0.abreviation'));
+        $this->assertEquals(6, $w->json('data.ingresoByService.0.total'));
 
         $from = now('UTC')->subDays(100)->toDateString();
         $to = now('UTC')->toDateString();

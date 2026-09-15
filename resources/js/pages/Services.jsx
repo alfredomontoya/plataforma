@@ -48,17 +48,19 @@ export default function Services() {
                 </div>
                 <table className="table">
                     <thead>
-                        <tr><th>Nombre</th><th>Abrev.</th><th>Tipo</th><th>Orden</th><th>Estado</th><th>Acciones</th></tr>
+                        <tr><th>Nombre</th><th>Código</th><th>Abrev.</th><th>Tipo</th><th>Orden</th><th>Estado</th><th>Acciones</th></tr>
                     </thead>
                     <tbody>
                         {rows.map((s) => (
                             <tr key={s.id}>
                                 <td>{s.name}</td>
-                                <td>{s.abreviation}</td>
+                                <td className="font-mono">{s.codigo || '—'}</td>
+                                <td>{s.abreviation || '—'}</td>
                                 <td><span className="badge badge-primary">{s.type}</span></td>
                                 <td>{s.sortOrder}</td>
                                 <td><span className={`badge ${s.isActive ? 'badge-success' : 'badge-danger'}`}>{s.isActive ? 'Activo' : 'Inactivo'}</span></td>
                                 <td>
+                                    <Button size="sm" variant="secondary" onClick={() => { setForm(s); setModal('show'); }}>Ver</Button>{' '}
                                     <Button size="sm" variant="secondary" onClick={() => { setForm(s); setModal('edit'); }}>Editar</Button>{' '}
                                     <Button size="sm" variant="danger" onClick={() => api.delete(`/services/admin/${s.id}`).then(() => { toastSuccess('Desactivado.'); load(); })}>Off</Button>
                                 </td>
@@ -70,13 +72,26 @@ export default function Services() {
             <Modal isOpen={modal === 'new' || modal === 'edit'} onClose={() => setModal(null)} title="Servicio">
                 <form onSubmit={save} className="space-y-3">
                     <Input label="Nombre" value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 gap-3">
+                        <Input label="Código" value={form.codigo || ''} onChange={(e) => setForm({ ...form, codigo: e.target.value })} />
                         <Input label="Abreviatura" value={form.abreviation || ''} onChange={(e) => setForm({ ...form, abreviation: e.target.value })} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
                         <Select label="Tipo" value={form.type || 'INGRESO'} onChange={(e) => setForm({ ...form, type: e.target.value })} options={[{ value: 'INGRESO', label: 'INGRESO' }, { value: 'ENTREGA', label: 'ENTREGA' }]} />
                         <Input label="Orden" type="number" value={form.sortOrder ?? 0} onChange={(e) => setForm({ ...form, sortOrder: Number(e.target.value) })} />
                     </div>
                     <Button type="submit">Guardar</Button>
                 </form>
+            </Modal>
+            <Modal isOpen={modal === 'show'} onClose={() => setModal(null)} title="Detalle del servicio">
+                <dl className="space-y-2 text-sm">
+                    <div><dt className="font-medium text-stone-500 dark:text-wa-muted">Nombre</dt><dd>{form.name}</dd></div>
+                    <div><dt className="font-medium text-stone-500 dark:text-wa-muted">Código</dt><dd className="font-mono">{form.codigo || '—'}</dd></div>
+                    <div><dt className="font-medium text-stone-500 dark:text-wa-muted">Abreviatura</dt><dd>{form.abreviation || '—'}</dd></div>
+                    <div><dt className="font-medium text-stone-500 dark:text-wa-muted">Tipo</dt><dd><span className="badge badge-primary">{form.type}</span></dd></div>
+                    <div><dt className="font-medium text-stone-500 dark:text-wa-muted">Orden</dt><dd>{form.sortOrder}</dd></div>
+                    <div><dt className="font-medium text-stone-500 dark:text-wa-muted">Estado</dt><dd>{form.isActive ? 'Activo' : 'Inactivo'}</dd></div>
+                </dl>
             </Modal>
         </RoleGuard>
     );

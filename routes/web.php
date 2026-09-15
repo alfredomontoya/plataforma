@@ -12,3 +12,4 @@ Route::get('/admin/servicios', fn () => Inertia::render('Services'));
 Route::get('/jefe/dashboard', fn () => Inertia::render('Dashboard'));
 Route::get('/jefe/reportes', fn () => Inertia::render('Reports'));
 Route::get('/jefe/reportes/historial', fn () => Inertia::render('History'));
+Route::get('/acerca-de', fn () => Inertia::render('About'));

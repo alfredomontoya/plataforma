@@ -81,8 +81,11 @@ class UsersServicesTest extends TestCase
 
         $auth = fn () => $this->actingAs($admin, 'sanctum');
         $auth()->postJson('/api/services/admin', ['name' => 'SERV X'])->assertStatus(400); // duplicado
-        $created = $auth()->postJson('/api/services/admin', ['name' => 'SERV Y', 'type' => 'ENTREGA'])->assertCreated();
-        $auth()->patchJson('/api/services/admin/' . $created->json('data.id'), ['sortOrder' => 5])->assertOk();
+        $created = $auth()->postJson('/api/services/admin', ['name' => 'SERV Y', 'codigo' => 'SY', 'type' => 'ENTREGA'])->assertCreated();
+        $this->assertEquals('SY', $created->json('data.codigo'));
+        $auth()->postJson('/api/services/admin', ['name' => 'SERV Z', 'codigo' => 'SY', 'type' => 'ENTREGA'])->assertStatus(400); // codigo duplicado
+        $auth()->patchJson('/api/services/admin/' . $created->json('data.id'), ['sortOrder' => 5, 'abreviation' => 'Serv. Y'])->assertOk()
+            ->assertJsonPath('data.abreviation', 'Serv. Y');
         $auth()->deleteJson('/api/services/admin/' . $svc->id)->assertOk();
         $this->assertFalse($svc->fresh()->isActive);
         // desactivado ya no sale en catálogo

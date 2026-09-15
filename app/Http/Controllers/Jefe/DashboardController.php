@@ -36,4 +36,11 @@ class DashboardController extends Controller
 
         return ApiResponse::ok($dash->range($data['from'], $data['to']));
     }
+
+    public function daily(DashboardRangeRequest $request, DashboardService $dash): JsonResponse
+    {
+        $data = $request->validated();
+
+        return ApiResponse::ok($dash->daily($data['from'], $data['to']));
+    }
 }

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { renderAsync } from 'docx-preview';
 import api, { todayLocal } from '../lib/api';
 import { RoleGuard } from '../components/layout/RoleGuard';
-import { Button, DatePicker, Input, Select } from '../components/ui/controls';
+import { Button, DatePicker, Input, Modal, Select } from '../components/ui/controls';
 import { useToast } from '../components/ui/Toast';
 
 export default function Reports() {
@@ -10,6 +11,9 @@ export default function Reports() {
     const [form, setForm] = useState({ templateId: '', mode: 'WEEK', weekStart: todayLocal(), date: todayLocal(), nroCI: '', dirigidoA: '', puestoDirigidoA: '' });
     const [busy, setBusy] = useState(false);
     const [upload, setUpload] = useState({ name: '', file: null });
+    const [previewOpen, setPreviewOpen] = useState(false);
+    const [previewBlob, setPreviewBlob] = useState(null);
+    const previewRef = useRef(null);
 
     const loadTemplates = async () => {
         try {
@@ -27,19 +31,82 @@ export default function Reports() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const download = async (preview) => {
+    const missing = () => {
+        const req = [['nroCI', 'N° informe'], ['dirigidoA', 'Dirigido a'], ['puestoDirigidoA', 'Puesto']];
+        return req.filter(([k]) => !String(form[k] || '').trim()).map(([, l]) => l);
+    };
+
+    const payload = () => ({ ...form, templateId: form.templateId || null });
+
+    const saveBlob = (blob, name) => {
+        const url = URL.createObjectURL(blob instanceof Blob ? blob : new Blob([blob]));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    };
+
+    // Los errores llegan como blob: se leen como texto para mostrar el mensaje real.
+    const blobError = async (err) => {
+        try {
+            const blob = err.response?.data;
+            const text = blob instanceof Blob ? await blob.text() : null;
+            if (text) {
+                const j = JSON.parse(text);
+                if (j.error) return j.error;
+                if (j.message) return j.message;
+            }
+        } catch { /* no es JSON */ }
+        return 'Error al procesar el informe.';
+    };
+
+    const doPreview = async () => {
+        const m = missing();
+        if (m.length) {
+            toastError(`Completa antes: ${m.join(', ')}.`);
+            return;
+        }
         setBusy(true);
         try {
-            const r = await api.post(`/reports/${preview ? 'preview' : 'generate'}`, form, { responseType: 'blob' });
-            const url = URL.createObjectURL(new Blob([r.data]));
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = preview ? 'vista-previa.docx' : `informe-${form.nroCI}.docx`;
-            a.click();
-            URL.revokeObjectURL(url);
-            if (!preview) toastSuccess('Informe generado.');
-        } catch {
-            toastError('Error al procesar el informe.');
+            const r = await api.post('/reports/preview', payload(), { responseType: 'blob' });
+            const blob = r.data instanceof Blob ? r.data : new Blob([r.data]);
+            if (previewRef.current) previewRef.current.innerHTML = '';
+            setPreviewBlob(blob);
+            setPreviewOpen(true);
+            // Se renderiza tras abrir el modal (el contenedor debe existir en el DOM).
+            requestAnimationFrame(async () => {
+                try {
+                    if (previewRef.current) await renderAsync(await blob.arrayBuffer(), previewRef.current);
+                } catch {
+                    toastError('No se pudo mostrar la vista previa.');
+                }
+            });
+        } catch (err) {
+            toastError(await blobError(err));
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const doGenerate = async () => {
+        const m = missing();
+        if (m.length) {
+            toastError(`Completa antes: ${m.join(', ')}.`);
+            return;
+        }
+        setBusy(true);
+        try {
+            // generate devuelve JSON con el id; el .docx real se descarga aparte.
+            const r = await api.post('/reports/generate', payload());
+            const { id, fileName } = r.data.data;
+            const d = await api.get(`/reports/${id}/download`, { responseType: 'blob' });
+            saveBlob(d.data, fileName || `informe-${form.nroCI}.docx`);
+            toastSuccess('Informe generado.');
+        } catch (err) {
+            toastError(err.response?.data?.error || err.response?.data?.message || 'Error al procesar el informe.');
         } finally {
             setBusy(false);
         }
@@ -74,8 +141,8 @@ export default function Reports() {
                         <Input label="Puesto" value={form.puestoDirigidoA} onChange={(e) => setForm({ ...form, puestoDirigidoA: e.target.value })} />
                     </div>
                     <div className="flex gap-2">
-                        <Button loading={busy} onClick={() => download(true)} variant="secondary">Vista previa</Button>
-                        <Button loading={busy} onClick={() => download(false)}>Generar</Button>
+                        <Button loading={busy} onClick={doPreview} variant="secondary">Vista previa</Button>
+                        <Button loading={busy} onClick={doGenerate}>Generar</Button>
                     </div>
                 </div>
                 <div className="card space-y-3 p-5">
@@ -96,6 +163,14 @@ export default function Reports() {
                     </form>
                 </div>
             </div>
+
+            <Modal isOpen={previewOpen} onClose={() => setPreviewOpen(false)} title="Vista previa del informe" size="lg">
+                <div ref={previewRef} className="rounded-lg bg-white p-4 text-black docx-preview" />
+                <div className="mt-4 flex justify-end gap-2">
+                    <Button variant="secondary" onClick={() => setPreviewOpen(false)}>Cerrar</Button>
+                    <Button onClick={() => previewBlob && saveBlob(previewBlob, 'vista-previa.docx')}>Descargar .docx</Button>
+                </div>
+            </Modal>
         </RoleGuard>
     );
 }

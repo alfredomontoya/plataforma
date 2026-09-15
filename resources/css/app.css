@@ -3,27 +3,35 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --color-primary-50: #fef2f2;
-  --color-primary-100: #fee2e2;
-  --color-primary-200: #fecaca;
-  --color-primary-300: #fca5a5;
-  --color-primary-400: #f87171;
-  --color-primary-500: #dc2626;
-  --color-primary-600: #b91c1c;
-  --color-primary-700: #991b1b;
-  --color-primary-800: #7f1d1d;
-  --color-primary-900: #450a0a;
+  /* Rojos de marca: base #f71f3d, medio #fa6c80, claro #fdadb9 */
+  --color-primary-50: #fff0f3;
+  --color-primary-100: #ffe0e6;
+  --color-primary-200: #fdadb9;
+  --color-primary-300: #fc8ba0;
+  --color-primary-400: #fa6c80;
+  --color-primary-500: #f9435c;
+  --color-primary-600: #f71f3d;
+  --color-primary-700: #d3112c;
+  --color-primary-800: #a50e24;
+  --color-primary-900: #5c0714;
+
+  /* Oscuro estilo WhatsApp (el rojo primary se mantiene como acento) */
+  --color-wa-bg: #171617;
+  --color-wa-panel: #201f20;
+  --color-wa-header: #2d2c2d;
+  --color-wa-text: #e9edef;
+  --color-wa-muted: #8696a0;
 }
 
 /* Clases propias (docs 02 § Sistema de diseño) */
 .card {
-  @apply rounded-xl border border-stone-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#1c1917];
+  @apply rounded-xl border border-stone-200 bg-white shadow-sm dark:border-white/10 dark:bg-wa-panel;
 }
 .table {
-  @apply w-full text-sm text-stone-900 dark:text-stone-100;
+  @apply w-full text-sm text-stone-900 dark:text-wa-text;
 }
 .table thead th {
-  @apply bg-stone-100 px-3 py-2 text-left font-semibold dark:bg-stone-800;
+  @apply bg-stone-100 px-3 py-2 text-left font-semibold dark:bg-wa-header;
 }
 .table tbody td {
   @apply border-t border-stone-200 px-3 py-2 dark:border-white/10;
@@ -41,11 +49,53 @@
   @apply bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200;
 }
 .badge-danger {
-  @apply bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200;
+  @apply bg-primary-100 text-primary-800 dark:bg-primary-900/50 dark:text-primary-200;
 }
 .badge-warning {
   @apply bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200;
 }
 .badge-gray {
-  @apply bg-stone-200 text-stone-700 dark:bg-white/10 dark:text-stone-300;
+  @apply bg-stone-200 text-stone-700 dark:bg-white/10 dark:text-wa-muted;
+}
+
+/* Logo login: motor en marcha (vibración) + avance (zoom + líneas de velocidad + resplandor). */
+.car-run {
+  position: relative;
+  animation: car-surge 2.6s ease-in-out infinite;
+}
+.car-run .car-body {
+  animation: engine-idle 0.32s linear infinite;
+}
+.car-run .car-lines line {
+  stroke-dasharray: 7 12;
+  animation: lines-out 0.9s linear infinite;
+}
+.car-run .car-glow {
+  animation: glow-pulse 2.6s ease-in-out infinite;
+}
+@keyframes engine-idle {
+  0% { transform: translate(0, 0) rotate(0); }
+  25% { transform: translate(0.8px, -0.6px) rotate(0.4deg); }
+  50% { transform: translate(-0.7px, 0.5px) rotate(-0.4deg); }
+  75% { transform: translate(0.6px, 0.7px) rotate(0.3deg); }
+  100% { transform: translate(0, 0) rotate(0); }
+}
+@keyframes car-surge {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+@keyframes lines-out {
+  to { stroke-dashoffset: -19; }
+}
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.45; transform: scaleX(1); }
+  50% { opacity: 0.85; transform: scaleX(1.12); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .car-run,
+  .car-run .car-body,
+  .car-run .car-lines line,
+  .car-run .car-glow {
+    animation: none;
+  }
 }

@@ -22,8 +22,6 @@ class SeedPlatform extends Command
         {--skip-templates : omite plantillas}
         {--skip-entries : omite entradas}
         {--no-wipe : no vacía antes de sembrar}
-        {--operators=10 : operadores aleatorios extra (mitad/mitad)}
-        {--userSeed=42 : semilla de usuarios}
         {--month=2026-08 : mes de entradas YYYY-MM (se ignora con --from)}
         {--from= : inicio de rango YYYY-MM-DD}
         {--to= : fin de rango YYYY-MM-DD (default hoy)}
@@ -33,8 +31,8 @@ class SeedPlatform extends Command
         {--weekendMax=3 : cantidad máx. fin de semana}
         {--perUserMin= : filas mín. por usuario/día (modo per-user; omite = legacy día×servicio)}
         {--perUserMax= : filas máx. por usuario/día (modo per-user)}
-        {--allUsers : incluye ADMIN en modo per-user}
-        {--includeJefe : incluye JEFE en modo per-user (solo demo)}
+        {--operators-only : solo OPERATOR_* en modo per-user (por defecto entran todos)}
+        {--excludeJefe : excluye al JEFE en modo per-user (por defecto incluido; solo demo)}
         {--seed= : semilla PRNG (defecto año*100+mes)}';
 
     protected $description = 'Siembra la plataforma (wipe → roles → users → services → templates → entries)';
@@ -50,7 +48,7 @@ class SeedPlatform extends Command
             (new RolesAndPermissionsSeeder())->run();
         }
         if (! $this->option('skip-users')) {
-            (new UsersSeeder((int) $this->option('operators'), (int) $this->option('userSeed')))->run();
+            (new UsersSeeder())->run();
         }
         if (! $this->option('skip-services')) {
             (new ServicesSeeder())->run();
@@ -69,7 +67,8 @@ class SeedPlatform extends Command
                 (int) $this->option('min'), (int) $this->option('max'),
                 (int) $this->option('weekendMin'), (int) $this->option('weekendMax'),
                 $perUserMin, $perUserMax,
-                (bool) $this->option('allUsers'), (bool) $this->option('includeJefe'),
+                ! (bool) $this->option('operators-only'),
+                ! (bool) $this->option('excludeJefe'),
                 $this->option('seed') !== null ? (int) $this->option('seed') : null,
             ))->run();
         }

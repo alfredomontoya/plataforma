@@ -4,9 +4,9 @@ import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 export function Button({ variant = 'primary', size = 'md', loading, disabled, className = '', ...props }) {
     const base = 'inline-flex items-center justify-center rounded-lg font-medium transition disabled:opacity-50';
     const variants = {
-        primary: 'bg-primary-700 text-white hover:bg-primary-800 dark:bg-primary-600 dark:hover:bg-primary-500',
+        primary: 'bg-primary-600 text-white hover:bg-primary-700 dark:bg-primary-600 dark:hover:bg-primary-500',
         secondary: 'border border-stone-300 hover:bg-stone-100 dark:border-white/10 dark:hover:bg-white/5',
-        danger: 'bg-red-700 text-white hover:bg-red-800',
+        danger: 'bg-primary-600 text-white hover:bg-primary-700',
     };
     const sizes = { sm: 'px-2.5 py-1 text-sm', md: 'px-4 py-2 text-sm' };
     return (
@@ -22,10 +22,10 @@ export function Input({ label, error, helperText, ...props }) {
         <label className="block">
             {label && <span className="mb-1 block text-sm font-medium">{label}</span>}
             <input
-                className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
+                className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-wa-header"
                 {...props}
             />
-            {error && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">{error}</span>}
+            {error && <span className="mt-1 block text-xs text-primary-600 dark:text-primary-400">{error}</span>}
             {!error && helperText && <span className="mt-1 block text-xs text-stone-500">{helperText}</span>}
         </label>
     );
@@ -53,7 +53,7 @@ export function Select({ label, options = [], error, placeholder, ...props }) {
         <label className="block">
             {label && <span className="mb-1 block text-sm font-medium">{label}</span>}
             <select
-                className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
+                className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-wa-header"
                 {...props}
             >
                 {placeholder && <option value="">{placeholder}</option>}
@@ -63,7 +63,7 @@ export function Select({ label, options = [], error, placeholder, ...props }) {
                     </option>
                 ))}
             </select>
-            {error && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">{error}</span>}
+            {error && <span className="mt-1 block text-xs text-primary-600 dark:text-primary-400">{error}</span>}
         </label>
     );
 }

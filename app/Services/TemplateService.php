@@ -67,15 +67,14 @@ class TemplateService
     public function resolveOrCreate(?string $templateId, User $user): Template
     {
         if ($template = $this->resolve($templateId)) {
-            if (file_exists($template->filePath)) {
-                return $template;
+            if (! file_exists($template->filePath)) {
+                $this->restoreBaseFile($template->filePath);
             }
-            $this->buildBaseFile($template->filePath);
             return $template;
         }
 
         $path = Storage::path(self::DIR . '/default.docx');
-        $this->buildBaseFile($path);
+        $this->restoreBaseFile($path);
 
         return Template::create([
             'name' => 'Plantilla del Sistema',
@@ -84,6 +83,21 @@ class TemplateService
             'uploadedById' => $user->id,
             'isDefault' => true,
         ]);
+    }
+
+    /**
+     * Restaura el archivo base: primero la fuente versionada con formato;
+     * solo como último recurso genera la versión simple (nunca pisa la fuente).
+     */
+    public function restoreBaseFile(string $path): void
+    {
+        $assets = base_path('assets/templates/plantilla-sistema.docx');
+        if (file_exists($assets)) {
+            @mkdir(dirname($path), 0777, true);
+            copy($assets, $path);
+            return;
+        }
+        $this->buildBaseFile($path);
     }
 
     /** Genera el .docx base con ${PLACEHOLDERS} y filas clonables. */

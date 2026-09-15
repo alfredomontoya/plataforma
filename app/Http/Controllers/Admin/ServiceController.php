@@ -33,6 +33,7 @@ class ServiceController extends Controller
 
         if ($search = $request->query('search')) {
             $q->where(fn ($w) => $w->where('name', 'like', "%{$search}%")
+                ->orWhere('codigo', 'like', "%{$search}%")
                 ->orWhere('abreviation', 'like', "%{$search}%"));
         }
         if ($request->query('type')) {

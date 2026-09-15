@@ -16,6 +16,7 @@ class CreateServiceRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:191', Rule::unique('services', 'name')],
+            'codigo' => ['nullable', 'string', 'max:32', Rule::unique('services', 'codigo')],
             'abreviation' => ['nullable', 'string', 'max:32'],
             'type' => ['required', Rule::in(['INGRESO', 'ENTREGA'])],
             'isActive' => ['sometimes', 'boolean'],
@@ -28,6 +29,7 @@ class CreateServiceRequest extends FormRequest
         return [
             'name.required' => 'El nombre del servicio es obligatorio.',
             'name.unique' => 'Ya existe un servicio con ese nombre.',
+            'codigo.unique' => 'Ya existe un servicio con ese código.',
             'type.required' => 'El tipo es obligatorio.',
             'type.in' => 'Tipo inválido (INGRESO o ENTREGA).',
         ];

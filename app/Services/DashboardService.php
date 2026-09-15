@@ -58,6 +58,42 @@ class DashboardService
         return $this->rangePayload($start, $end, $start->copy()->subDays($days));
     }
 
+    /** Totales por día en [from, to] inclusivo: [{date, ingreso, entrega}] (días sin datos en 0). */
+    public function daily(string $from, string $to): array
+    {
+        $start = BusinessDay::parseUtcDay($from);
+        $end = BusinessDay::parseUtcDay($to)->addDay(); // inclusivo
+        $days = (int) $start->diffInDays($end);
+
+        if ($days > self::RANGE_MAX_DAYS) {
+            throw new HttpResponseException(
+                ApiResponse::error('El rango no puede superar 93 días.', 400)
+            );
+        }
+
+        $byDay = Entry::query()
+            ->where('entries.date', '>=', $start)
+            ->where('entries.date', '<', $end)
+            ->groupBy(DB::raw('DATE(entries.date)'))
+            ->get([
+                DB::raw('DATE(entries.date) as day'),
+                DB::raw("SUM(CASE WHEN entries.type = 'INGRESO' THEN entries.quantity ELSE 0 END) as ingreso"),
+                DB::raw("SUM(CASE WHEN entries.type = 'ENTREGA' THEN entries.quantity ELSE 0 END) as entrega"),
+            ])
+            ->keyBy('day');
+
+        $out = [];
+        $cursor = $start->copy();
+        while ($cursor->lt($end)) {
+            $key = $cursor->toDateString();
+            $r = $byDay->get($key);
+            $out[] = ['date' => $key, 'ingreso' => (int) ($r->ingreso ?? 0), 'entrega' => (int) ($r->entrega ?? 0)];
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
     private function rangePayload(Carbon $start, Carbon $end, Carbon $prevStart): array
     {
         $ing = $this->total($start, $end, 'INGRESO');
@@ -70,6 +106,8 @@ class DashboardService
             'periodEnd' => $end->copy()->subDay()->toDateString(),
             'ingreso' => ['current' => $ing, 'previous' => $ingPrev, 'trend' => BusinessDay::trend($ing, $ingPrev), 'total' => $ing],
             'entrega' => ['current' => $ent, 'previous' => $entPrev, 'trend' => BusinessDay::trend($ent, $entPrev), 'total' => $ent],
+            'ingresoByService' => $this->byService($start, $end, 'INGRESO'),
+            'entregaByService' => $this->byService($start, $end, 'ENTREGA'),
             'totalIngreso' => $ing,
             'totalEntrega' => $ent,
             'operators' => $this->operators($start, $end, true),
@@ -82,18 +120,26 @@ class DashboardService
         return $this->byService($start, $end, $type);
     }
 
-    /** Totales por servicio: [{serviceId, serviceName, abreviation, total}]. */
+    /** Totales por servicio: [{serviceId, serviceName, codigo, abreviation, total}]. */
     private function byService(Carbon $start, Carbon $end, string $type): array
     {
+        // (int): MySQL devuelve SUM() como string y el frontend suma los totales.
         return Entry::query()
             ->join('services', 'services.id', '=', 'entries.serviceId')
             ->where('entries.date', '>=', $start)
             ->where('entries.date', '<', $end)
             ->where('entries.type', $type)
-            ->groupBy('entries.serviceId', 'services.name', 'services.abreviation')
+            ->groupBy('entries.serviceId', 'services.name', 'services.codigo', 'services.abreviation')
             ->orderByDesc(DB::raw('SUM(entries.quantity)'))
             ->get(['entries.serviceId as serviceId', 'services.name as serviceName',
-                'services.abreviation as abreviation', DB::raw('SUM(entries.quantity) as total')])
+                'services.codigo as codigo', 'services.abreviation as abreviation', DB::raw('SUM(entries.quantity) as total')])
+            ->map(fn ($r) => [
+                'serviceId' => $r->serviceId,
+                'serviceName' => $r->serviceName,
+                'codigo' => $r->codigo,
+                'abreviation' => $r->abreviation,
+                'total' => (int) $r->total,
+            ])
             ->toArray();
     }
 

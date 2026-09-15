@@ -18,6 +18,7 @@ class UpdateServiceRequest extends FormRequest
 
         return [
             'name' => ['sometimes', 'string', 'max:191', Rule::unique('services', 'name')->ignore($id)],
+            'codigo' => ['nullable', 'string', 'max:32', Rule::unique('services', 'codigo')->ignore($id)],
             'abreviation' => ['nullable', 'string', 'max:32'],
             'type' => ['sometimes', Rule::in(['INGRESO', 'ENTREGA'])],
             'isActive' => ['sometimes', 'boolean'],
@@ -29,6 +30,7 @@ class UpdateServiceRequest extends FormRequest
     {
         return [
             'name.unique' => 'Ya existe un servicio con ese nombre.',
+            'codigo.unique' => 'Ya existe un servicio con ese código.',
             'type.in' => 'Tipo inválido (INGRESO o ENTREGA).',
         ];
     }

@@ -20,13 +20,15 @@ class TemplatesSeeder extends Seeder
         }
 
         $assets = base_path('assets/templates/plantilla-sistema.docx');
-        if (! file_exists($assets)) {
-            app(TemplateService::class)->buildBaseFile($assets);
-        }
 
         Storage::makeDirectory(TemplateService::DIR);
         $dest = Storage::path(TemplateService::DIR . '/default.docx');
-        copy($assets, $dest);
+        if (file_exists($assets)) {
+            copy($assets, $dest);
+        } else {
+            // Último recurso: base simple directo al destino (nunca pisa la fuente).
+            app(TemplateService::class)->buildBaseFile($dest);
+        }
 
         $admin = User::where('username', 'admin')->first() ?? User::firstOrFail();
 

@@ -17,7 +17,7 @@ export function ToastProvider({ children }) {
                 {toasts.map((t) => (
                     <div
                         key={t.id}
-                        className={`card px-4 py-2 text-sm ${t.type === 'error' ? 'border-red-400 text-red-700 dark:text-red-300' : 'text-green-700 dark:text-green-300'}`}
+                        className={`card px-4 py-2 text-sm ${t.type === 'error' ? 'border-primary-400 text-primary-700 dark:text-primary-300' : 'text-green-700 dark:text-green-300'}`}
                     >
                         {t.message}
                     </div>

@@ -75,7 +75,8 @@ class ParityTest extends TestCase
         $this->assertStringContainsString('SERV DOCX', $xml);
         $images = array_values(array_filter(
             array_map(fn ($i) => $zip->getNameIndex($i), range(0, $zip->numFiles - 1)),
-            fn ($n) => str_starts_with((string) $n, 'word/media/')
+            // Solo las tortas generadas (.png); la plantilla puede traer sus imágenes.
+            fn ($n) => str_starts_with((string) $n, 'word/media/') && str_ends_with((string) $n, '.png')
         ));
         $this->assertCount(2, $images);
         $zip->close();

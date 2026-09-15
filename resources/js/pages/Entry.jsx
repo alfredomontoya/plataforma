@@ -124,7 +124,7 @@ export default function Entry() {
                 </div>
                 <div className="grid grid-cols-1 gap-x-6 gap-y-0.5 md:grid-cols-2 xl:grid-cols-3">
                     {visibleServices.length === 0 ? (
-                        <p className="text-sm text-stone-500">Sin coincidencias.</p>
+                        <p className="text-sm text-stone-500 dark:text-wa-muted">Sin coincidencias.</p>
                     ) : visibleServices.map((s) => (
                         <div key={s.id} className="flex items-center justify-between gap-2 border-b border-stone-100 py-1 dark:border-white/5">
                             <span className="truncate text-[13px] leading-tight">{s.name}</span>
@@ -134,7 +134,7 @@ export default function Entry() {
                                 disabled={loadingEntries}
                                 value={qty[s.id] ?? 0}
                                 onChange={(e) => setQty({ ...qty, [s.id]: e.target.value })}
-                                className="w-20 shrink-0 rounded-md border border-stone-300 px-2 py-0.5 text-right text-sm disabled:opacity-50 dark:border-white/10 dark:bg-white/5"
+                                className="w-20 shrink-0 rounded-md border border-stone-300 px-2 py-0.5 text-right text-sm disabled:opacity-50 dark:border-white/10 dark:bg-wa-header"
                             />
                         </div>
                     ))}
@@ -146,19 +146,19 @@ export default function Entry() {
             <div className="card space-y-3 p-5">
                 <h2 className="text-sm font-semibold">Registrado · {date}</h2>
                 {loadingEntries ? (
-                    <p className="text-sm text-stone-500">Cargando…</p>
+                    <p className="text-sm text-stone-500 dark:text-wa-muted">Cargando…</p>
                 ) : !hasRegistered ? (
-                    <p className="text-sm text-stone-500">No hay registros para esta fecha.</p>
+                    <p className="text-sm text-stone-500 dark:text-wa-muted">No hay registros para esta fecha.</p>
                 ) : (
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         {tables.map(({ type, rows, total }) => (
                             <div key={type} className="overflow-hidden rounded-lg border border-stone-200 dark:border-white/10">
-                                <div className="flex items-center justify-between bg-stone-100 px-3 py-1.5 text-[13px] font-semibold dark:bg-white/5">
+                                <div className="flex items-center justify-between bg-stone-100 px-3 py-1.5 text-[13px] font-semibold dark:bg-wa-header">
                                     <span>{type === 'INGRESO' ? 'Ingreso' : 'Entrega'}</span>
                                     <span>Total: {total}</span>
                                 </div>
                                 {rows.length === 0 ? (
-                                    <p className="px-3 py-2 text-[13px] text-stone-500">No hay registros para esta fecha.</p>
+                                    <p className="px-3 py-2 text-[13px] text-stone-500 dark:text-wa-muted">No hay registros para esta fecha.</p>
                                 ) : (
                                     <div className="px-3 py-1">
                                         {rows.map((e) => (
