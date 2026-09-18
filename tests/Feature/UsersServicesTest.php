@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\Service;
+use App\Models\User;
 use App\Services\UserService;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Database\Seeders\UsersSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -64,6 +66,23 @@ class UsersServicesTest extends TestCase
         $auth()->deleteJson("/api/users/{$id}")->assertOk();
         $this->assertFalse(\App\Models\User::find($id)->isActive);
         $this->assertDatabaseHas('users', ['id' => $id]);
+    }
+
+    public function test_seed_admin_con_backfill(): void
+    {
+        (new UsersSeeder())->run();
+
+        $admin = User::where('username', 'admin')->firstOrFail();
+        $this->assertTrue($admin->canBackfill);
+        $this->assertEquals(now('UTC')->toDateString(), $admin->canBackfillEnabledAt->toDateString());
+
+        $op = User::where('username', 'jquispe')->firstOrFail();
+        $this->assertFalse($op->canBackfill);
+
+        // Re-siembra idempotente: mantiene el flag en admin existentes.
+        $admin->update(['canBackfill' => false]);
+        (new UsersSeeder())->run();
+        $this->assertTrue($admin->fresh()->canBackfill);
     }
 
     public function test_servicios_catalogo_y_crud(): void

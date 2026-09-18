@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { renderAsync } from 'docx-preview';
 import api, { todayLocal } from '../lib/api';
+import { parseNro, nextNro, saveBlob } from '../lib/reportShared';
 import { RoleGuard } from '../components/layout/RoleGuard';
 import { Button, DatePicker, Input, Modal, Select } from '../components/ui/controls';
 import { useToast } from '../components/ui/Toast';
@@ -8,9 +9,8 @@ import { useToast } from '../components/ui/Toast';
 export default function Reports() {
     const { toastSuccess, toastError } = useToast();
     const [templates, setTemplates] = useState([]);
-    const [form, setForm] = useState({ templateId: '', mode: 'WEEK', weekStart: todayLocal(), date: todayLocal(), nroCI: '', dirigidoA: '', puestoDirigidoA: '' });
+    const [form, setForm] = useState({ templateId: '', mode: 'WEEK', weekStart: todayLocal(), date: todayLocal(), nroCI: '', dirigidoA: 'Director General', puestoDirigidoA: 'Dirección General' });
     const [busy, setBusy] = useState(false);
-    const [upload, setUpload] = useState({ name: '', file: null });
     const [previewOpen, setPreviewOpen] = useState(false);
     const [previewBlob, setPreviewBlob] = useState(null);
     const previewRef = useRef(null);
@@ -26,8 +26,23 @@ export default function Reports() {
         }
     };
 
+    const loadDefaultNro = async () => {
+        try {
+            const r = await api.get('/reports', { params: { limit: 100, search: `/${YEAR}` } });
+            const rows = r.data.data || [];
+            const max = rows.reduce((m, rr) => {
+                const p = parseNro(rr.nroCI);
+                return p && p.year === YEAR ? Math.max(m, p.seq) : m;
+            }, 0);
+            setForm((f) => (f.nroCI ? f : { ...f, nroCI: `${String(max + 1).padStart(3, '0')}/${YEAR}` }));
+        } catch {
+            setForm((f) => (f.nroCI ? f : { ...f, nroCI: nextNro() }));
+        }
+    };
+
     useEffect(() => {
         loadTemplates();
+        loadDefaultNro();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -37,17 +52,6 @@ export default function Reports() {
     };
 
     const payload = () => ({ ...form, templateId: form.templateId || null });
-
-    const saveBlob = (blob, name) => {
-        const url = URL.createObjectURL(blob instanceof Blob ? blob : new Blob([blob]));
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = name;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-    };
 
     // Los errores llegan como blob: se leen como texto para mostrar el mensaje real.
     const blobError = async (err) => {
@@ -104,6 +108,7 @@ export default function Reports() {
             const { id, fileName } = r.data.data;
             const d = await api.get(`/reports/${id}/download`, { responseType: 'blob' });
             saveBlob(d.data, fileName || `informe-${form.nroCI}.docx`);
+            setForm((f) => ({ ...f, nroCI: nextNro(f.nroCI) }));
             toastSuccess('Informe generado.');
         } catch (err) {
             toastError(err.response?.data?.error || err.response?.data?.message || 'Error al procesar el informe.');
@@ -112,25 +117,12 @@ export default function Reports() {
         }
     };
 
-    const uploadTemplate = async (e) => {
-        e.preventDefault();
-        if (!upload.file) return;
-        try {
-            await api.post('/templates', { name: upload.name, file: upload.file }, { headers: { 'Content-Type': 'multipart/form-data' } });
-            setUpload({ name: '', file: null });
-            toastSuccess('Plantilla subida.');
-            loadTemplates();
-        } catch (err) {
-            toastError(err.response?.data?.error || 'Error al subir.');
-        }
-    };
-
     return (
         <RoleGuard allowed={['JEFE', 'ADMIN']}>
             <div className="space-y-4">
-                <div className="card space-y-3 p-5">
-                    <h1 className="text-lg font-semibold">Generar reporte</h1>
-                    <div className="grid gap-3 md:grid-cols-2">
+                <div className="card space-y-3 p-4">
+                    <h1 className="text-base font-semibold">Generar reporte</h1>
+                    <div className="grid gap-x-3 gap-y-2 md:grid-cols-2 xl:grid-cols-3">
                         <Select label="Plantilla" value={form.templateId} onChange={(e) => setForm({ ...form, templateId: e.target.value })} options={templates.map((t) => ({ value: t.id, label: `${t.name}${t.isDefault ? ' (Por defecto)' : ''}` }))} />
                         <Select label="Modo" value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value })} options={[{ value: 'DAY', label: 'Día' }, { value: 'WEEK', label: 'Semana' }]} />
                         {form.mode === 'DAY'
@@ -141,27 +133,13 @@ export default function Reports() {
                         <Input label="Puesto" value={form.puestoDirigidoA} onChange={(e) => setForm({ ...form, puestoDirigidoA: e.target.value })} />
                     </div>
                     <div className="flex gap-2">
-                        <Button loading={busy} onClick={doPreview} variant="secondary">Vista previa</Button>
-                        <Button loading={busy} onClick={doGenerate}>Generar</Button>
+                        <Button size="sm" loading={busy} onClick={doPreview} variant="secondary">Vista previa</Button>
+                        <Button size="sm" loading={busy} onClick={doGenerate}>Generar</Button>
                     </div>
                 </div>
-                <div className="card space-y-3 p-5">
-                    <h2 className="font-semibold">Plantillas</h2>
-                    {templates.map((t) => (
-                        <div key={t.id} className="flex items-center justify-between border-b border-stone-100 py-2 text-sm dark:border-white/5">
-                            <span>{t.name} {t.isDefault && <span className="badge badge-primary ml-1">Por defecto</span>}</span>
-                            <div className="flex gap-2">
-                                {!t.isDefault && <Button size="sm" variant="secondary" onClick={() => api.patch(`/templates/${t.id}/default`).then(() => { toastSuccess('Actualizada.'); loadTemplates(); })}>Por defecto</Button>}
-                                <Button size="sm" variant="danger" onClick={() => api.delete(`/templates/${t.id}`).then(() => { toastSuccess('Eliminada.'); loadTemplates(); })}>Eliminar</Button>
-                            </div>
-                        </div>
-                    ))}
-                    <form onSubmit={uploadTemplate} className="flex flex-wrap items-end gap-2">
-                        <Input label="Nombre" value={upload.name} onChange={(e) => setUpload({ ...upload, name: e.target.value })} required />
-                        <input type="file" accept=".docx" onChange={(e) => setUpload({ ...upload, file: e.target.files[0] })} className="text-sm" />
-                        <Button type="submit">Subir .docx</Button>
-                    </form>
-                </div>
+                <p className="text-sm text-stone-500 dark:text-wa-muted">
+                    Gestiona tus plantillas (subir, inspeccionar, editar textos) en el módulo <a href="/jefe/plantillas" className="font-medium text-primary-700 dark:text-primary-300">Plantillas</a>.
+                </p>
             </div>
 
             <Modal isOpen={previewOpen} onClose={() => setPreviewOpen(false)} title="Vista previa del informe" size="lg">

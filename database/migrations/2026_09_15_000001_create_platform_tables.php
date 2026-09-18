@@ -6,7 +6,10 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Baseline agrupado de tablas propias (squash 2026-09-15 de las migraciones
- * 0001_01_01_000000, 2026_09_04_190001..190006). Esquema idéntico al original.
+ * 0001_01_01_000000, 2026_09_04_190001..190006; squash 2026-09-19 que pliega
+ * 2026_09_15_000002 [codigo en services] y el historial de daily_totals
+ * [2026_09_19_000001 create + 2026_09_19_000002 serviceId FK]).
+ * Esquema = estado final actual. Solo quedan migraciones create.
  * Infraestructura/vendor (cache, jobs, tokens, permissions) queda en sus archivos.
  */
 return new class extends Migration
@@ -70,6 +73,7 @@ return new class extends Migration
             $table->char('id', 24)->primary();
             $table->string('name', 191)->unique();
             $table->string('abreviation', 32)->nullable();
+            $table->string('codigo', 32)->nullable()->unique();
             $table->string('type', 16)->index();
             $table->boolean('isActive')->default(true)->index();
             $table->integer('sortOrder')->default(0);
@@ -90,6 +94,21 @@ return new class extends Migration
 
             $table->index(['date', 'type']);
             $table->index(['userId', 'date']);
+        });
+
+        Schema::create('daily_totals', function (Blueprint $table) {
+            $table->char('id', 24)->primary();
+            $table->char('userId', 24);
+            $table->foreign('userId')->references('id')->on('users')->cascadeOnDelete();
+            $table->char('serviceId', 24);
+            $table->foreign('serviceId')->references('id')->on('services')->cascadeOnDelete();
+            // Día calendario en medianoche UTC (nunca hora local)
+            $table->dateTime('date')->index();
+            $table->unsignedInteger('quantity')->default(0);
+            $table->timestamps();
+
+            $table->index(['userId', 'date']);
+            $table->index(['date', 'serviceId']);
         });
 
         Schema::create('templates', function (Blueprint $table) {
@@ -130,6 +149,7 @@ return new class extends Migration
         });
         Schema::dropIfExists('reports');
         Schema::dropIfExists('templates');
+        Schema::dropIfExists('daily_totals');
         Schema::dropIfExists('entries');
         Schema::dropIfExists('services');
         Schema::dropIfExists('positions');

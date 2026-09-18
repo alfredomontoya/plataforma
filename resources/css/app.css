@@ -16,7 +16,7 @@
   --color-primary-900: #5c0714;
 
   /* Oscuro estilo WhatsApp (el rojo primary se mantiene como acento) */
-  --color-wa-bg: #171617;
+  --color-wa-bg: #1c1f1e;
   --color-wa-panel: #201f20;
   --color-wa-header: #2d2c2d;
   --color-wa-text: #e9edef;
@@ -38,6 +38,22 @@
 }
 .table tbody tr:hover {
   @apply bg-stone-50 dark:bg-white/5;
+}
+.table tfoot td {
+  @apply border-t-2 border-stone-300 px-3 py-2 dark:border-white/20;
+}
+.table-compact tfoot td {
+  @apply px-2 py-1;
+}
+/* Variante densa: texto y celdas más chicos para tablas largas. */
+.table-compact {
+  @apply text-xs;
+}
+.table-compact thead th {
+  @apply px-2 py-1;
+}
+.table-compact tbody td {
+  @apply px-2 py-0.5;
 }
 .badge {
   @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;

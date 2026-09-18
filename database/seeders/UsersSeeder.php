@@ -10,6 +10,8 @@ use Illuminate\Database\Seeder;
  * 10 usuarios base fijos (sin aleatorios):
  * admin (ADMIN), jefe (JEFE) + 8 operadores (username = inicial del nombre + apellido).
  * Todos con password `password`. Idempotente: no duplica por username.
+ * Los ADMIN quedan con canBackfill habilitado el día de siembra (permite
+ * registrar fechas pasadas; la regla lo auto-revoca al día siguiente).
  */
 class UsersSeeder extends Seeder
 {
@@ -34,6 +36,12 @@ class UsersSeeder extends Seeder
                 'isActive' => true, 'canBackfill' => false,
             ]);
             $user = User::where('username', $username)->first();
+            if ($role === 'ADMIN') {
+                $user->update([
+                    'canBackfill' => true,
+                    'canBackfillEnabledAt' => now('UTC')->toDateString(),
+                ]);
+            }
             if (! $user->activePositionId) {
                 app(UserService::class)->changePosition($user, [
                     'title' => $title, 'position' => 'Cargo Base', 'department' => 'La Paz',

@@ -7,6 +7,7 @@ use App\Http\Controllers\EntryController;
 use App\Http\Controllers\Jefe\DashboardController;
 use App\Http\Controllers\Jefe\ReportController;
 use App\Http\Controllers\Jefe\TemplateController;
+use App\Http\Controllers\TotalController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
@@ -52,6 +53,20 @@ Route::prefix('entries')->group(function () {
     Route::get('/summary/weekly', [EntryController::class, 'summaryWeekly'])->middleware(['auth:sanctum', 'role:ADMIN|JEFE']);
 });
 
+Route::prefix('totals')->group(function () {
+    Route::get('/catalog', [TotalController::class, 'catalog'])->middleware('auth:sanctum');
+    Route::post('/resolve', [TotalController::class, 'resolve'])
+        ->middleware(['auth:sanctum', 'role:ADMIN|OPERATOR_INGRESO']);
+    Route::get('/operators', [TotalController::class, 'operators'])->middleware(['auth:sanctum', 'role:ADMIN|OPERATOR_INGRESO']);
+    Route::post('/', [TotalController::class, 'store'])
+        ->middleware(['auth:sanctum', 'role:ADMIN|OPERATOR_INGRESO']);
+    Route::get('/me', [TotalController::class, 'me'])->middleware('auth:sanctum');
+    Route::get('/summary/day', [TotalController::class, 'day'])->middleware(['auth:sanctum', 'role:ADMIN|JEFE']);
+    Route::get('/summary/week', [TotalController::class, 'week'])->middleware(['auth:sanctum', 'role:ADMIN|JEFE']);
+    Route::get('/summary/range', [TotalController::class, 'range'])->middleware(['auth:sanctum', 'role:ADMIN|JEFE']);
+    Route::get('/summary/daily', [TotalController::class, 'daily'])->middleware(['auth:sanctum', 'role:ADMIN|JEFE']);
+});
+
 Route::prefix('templates')->middleware(['auth:sanctum', 'role:ADMIN|JEFE'])->group(function () {
     Route::get('/', [TemplateController::class, 'index']);
     Route::get('/default', [TemplateController::class, 'default']);
@@ -59,6 +74,12 @@ Route::prefix('templates')->middleware(['auth:sanctum', 'role:ADMIN|JEFE'])->gro
     Route::get('/{id}', [TemplateController::class, 'show']);
     Route::patch('/{id}/default', [TemplateController::class, 'setDefault']);
     Route::delete('/{id}', [TemplateController::class, 'destroy']);
+    Route::get('/{id}/download', [TemplateController::class, 'download']);
+    Route::post('/{id}/duplicate', [TemplateController::class, 'duplicate']);
+    Route::get('/{id}/inspect', [TemplateController::class, 'inspect']);
+    Route::get('/{id}/paragraphs', [TemplateController::class, 'paragraphs']);
+    Route::patch('/{id}/paragraphs', [TemplateController::class, 'updateParagraphs']);
+    Route::post('/{id}/paragraphs', [TemplateController::class, 'appendParagraph']);
 });
 
 Route::prefix('reports')->middleware(['auth:sanctum', 'role:ADMIN|JEFE'])->group(function () {
@@ -70,5 +91,6 @@ Route::prefix('reports')->middleware(['auth:sanctum', 'role:ADMIN|JEFE'])->group
     Route::post('/generate', [ReportController::class, 'generate']);
     Route::get('/', [ReportController::class, 'index']);
     Route::get('/{id}/download', [ReportController::class, 'download']);
+    Route::get('/{id}/pdf', [ReportController::class, 'pdf']);
     Route::delete('/{id}', [ReportController::class, 'destroy']);
 });

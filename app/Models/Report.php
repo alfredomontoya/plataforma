@@ -11,6 +11,7 @@ class Report extends Model
 
     public const MODE_DAY = 'DAY';
     public const MODE_WEEK = 'WEEK';
+    public const MODE_RANGE = 'RANGE';
 
     protected $fillable = [
         'nroCI', 'dirigidoA', 'puestoDirigidoA', 'templateId', 'mode',

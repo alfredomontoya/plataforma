@@ -1,9 +1,11 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
     ClipboardDocumentListIcon,
+    TableCellsIcon,
     UsersIcon,
     Cog6ToothIcon,
     ChartBarIcon,
+    DocumentDuplicateIcon,
     DocumentPlusIcon,
     ArchiveBoxIcon,
     ChevronLeftIcon,
@@ -19,10 +21,12 @@ import VehicleDoodles from './VehicleDoodles';
 
 const ITEMS = [
     { href: '/operador/entrada', label: 'Registro', icon: ClipboardDocumentListIcon, roles: ['OPERATOR_INGRESO', 'OPERATOR_ENTREGA', 'ADMIN'] },
+    { href: '/operador/total', label: 'Total diario', icon: TableCellsIcon, roles: ['OPERATOR_INGRESO', 'ADMIN'] },
     { href: '/admin/usuarios', label: 'Usuarios', icon: UsersIcon, roles: ['ADMIN'] },
     { href: '/admin/servicios', label: 'Servicios', icon: Cog6ToothIcon, roles: ['ADMIN'] },
     { href: '/jefe/dashboard', label: 'Dashboard', icon: ChartBarIcon, roles: ['JEFE', 'ADMIN'] },
     { href: '/jefe/reportes', label: 'Reportes', icon: DocumentPlusIcon, roles: ['JEFE', 'ADMIN'] },
+    { href: '/jefe/plantillas', label: 'Plantillas', icon: DocumentDuplicateIcon, roles: ['JEFE', 'ADMIN'] },
     { href: '/jefe/reportes/historial', label: 'Historial', icon: ArchiveBoxIcon, roles: ['JEFE', 'ADMIN'] },
     { href: '/acerca-de', label: 'Acerca de', icon: InformationCircleIcon, roles: ['OPERATOR_INGRESO', 'OPERATOR_ENTREGA', 'ADMIN', 'JEFE'] },
 ];
@@ -32,6 +36,13 @@ function Sidebar() {
     const { user } = useAuth();
     const { url } = usePage();
     const visible = ITEMS.filter((i) => user && i.roles.includes(user.role));
+    // Activo = coincidencia de prefijo más larga ("/jefe/reportes/historial"
+    // ya no marca también "/jefe/reportes").
+    const isPrefix = (href) => url === href || url.startsWith(`${href}/`);
+    const activeHref = visible.reduce(
+        (best, i) => (isPrefix(i.href) && i.href.length > best.length ? i.href : best),
+        ''
+    );
 
     return (
         <aside
@@ -69,7 +80,7 @@ function Sidebar() {
             </div>
             <nav className="flex flex-1 flex-col gap-1 p-2">
                 {visible.map((item) => {
-                    const active = url.startsWith(item.href);
+                    const active = item.href === activeHref;
                     const Icon = item.icon;
                     const link = (
                         <Link

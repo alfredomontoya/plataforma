@@ -7,6 +7,7 @@ use Database\Seeders\EntriesSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Database\Seeders\ServicesSeeder;
 use Database\Seeders\TemplatesSeeder;
+use Database\Seeders\TotalsSeeder;
 use Database\Seeders\UsersSeeder;
 use Illuminate\Console\Command;
 
@@ -21,6 +22,7 @@ class SeedPlatform extends Command
         {--skip-services : omite servicios}
         {--skip-templates : omite plantillas}
         {--skip-entries : omite entradas}
+        {--skip-totals : omite totales diarios}
         {--no-wipe : no vacía antes de sembrar}
         {--month=2026-08 : mes de entradas YYYY-MM (se ignora con --from)}
         {--from= : inicio de rango YYYY-MM-DD}
@@ -35,7 +37,7 @@ class SeedPlatform extends Command
         {--excludeJefe : excluye al JEFE en modo per-user (por defecto incluido; solo demo)}
         {--seed= : semilla PRNG (defecto año*100+mes)}';
 
-    protected $description = 'Siembra la plataforma (wipe → roles → users → services → templates → entries)';
+    protected $description = 'Siembra la plataforma (wipe → roles → users → services → templates → entries → totals)';
 
     public function handle(): int
     {
@@ -70,6 +72,11 @@ class SeedPlatform extends Command
                 ! (bool) $this->option('operators-only'),
                 ! (bool) $this->option('excludeJefe'),
                 $this->option('seed') !== null ? (int) $this->option('seed') : null,
+            ))->run();
+        }
+        if (! $this->option('skip-totals')) {
+            (new TotalsSeeder(
+                $this->option('month') ?: null, $this->option('from') ?: null, $this->option('to') ?: null,
             ))->run();
         }
 

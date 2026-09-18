@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Jefe;
 
 use App\Http\Controllers\Controller;
 use App\Models\Template;
+use App\Services\TemplateInspector;
 use App\Services\TemplateService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -60,5 +61,77 @@ class TemplateController extends Controller
         $templates->destroy(Template::findOrFail($id));
 
         return ApiResponse::ok(['message' => 'Plantilla eliminada.']);
+    }
+
+    public function download(string $id)
+    {
+        $template = Template::findOrFail($id);
+        if (! file_exists($template->filePath)) {
+            return ApiResponse::error('Archivo no encontrado.', 404);
+        }
+
+        return response()->download($template->filePath, $template->fileName);
+    }
+
+    public function inspect(string $id, TemplateInspector $inspector): JsonResponse
+    {
+        $template = Template::findOrFail($id);
+
+        return ApiResponse::ok($inspector->inspect($template->filePath));
+    }
+
+    public function paragraphs(string $id, TemplateInspector $inspector): JsonResponse
+    {
+        $template = Template::findOrFail($id);
+
+        return ApiResponse::ok($inspector->paragraphs($template->filePath));
+    }
+
+    public function updateParagraphs(Request $request, string $id, TemplateInspector $inspector): JsonResponse
+    {
+        $data = $request->validate([
+            'texts' => ['required', 'array', 'min:1', 'max:500'],
+            'texts.*' => ['required', 'string', 'max:2000'],
+        ]);
+        $template = Template::findOrFail($id);
+        if (! file_exists($template->filePath)) {
+            return ApiResponse::error('Archivo no encontrado.', 404);
+        }
+        $inspector->updateParagraphs($template->filePath, $data['texts']);
+
+        return ApiResponse::ok(['message' => 'Plantilla actualizada.']);
+    }
+
+    public function appendParagraph(Request $request, string $id, TemplateInspector $inspector): JsonResponse
+    {
+        $data = $request->validate([
+            'text' => ['required', 'string', 'max:2000'],
+        ]);
+        $template = Template::findOrFail($id);
+        if (! file_exists($template->filePath)) {
+            return ApiResponse::error('Archivo no encontrado.', 404);
+        }
+
+        return ApiResponse::created($inspector->appendParagraph($template->filePath, $data['text']));
+    }
+
+    public function duplicate(string $id): JsonResponse
+    {
+        $template = Template::findOrFail($id);
+        if (! file_exists($template->filePath)) {
+            return ApiResponse::error('Archivo no encontrado.', 404);
+        }
+        $copy = Template::create([
+            'name' => $template->name.' (copia)',
+            'fileName' => $template->fileName,
+            'filePath' => '',
+            'uploadedById' => request()->user()->id,
+            'isDefault' => false,
+        ]);
+        $dest = dirname($template->filePath).'/'.$copy->id.'_'.$template->fileName;
+        copy($template->filePath, $dest);
+        $copy->update(['filePath' => $dest]);
+
+        return ApiResponse::created($copy->fresh());
     }
 }

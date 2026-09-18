@@ -4,8 +4,11 @@ namespace App\Services;
 
 use App\Models\Template;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpWord\PhpWord;
+use PhpOffice\PhpWord\Writer\Word2007;
 
 /**
  * Plantillas .docx (docs 03 § Plantillas): primera = default, default exclusiva,
@@ -15,7 +18,7 @@ class TemplateService
 {
     public const DIR = 'templates';
 
-    public function store(User $user, string $name, \Illuminate\Http\UploadedFile $file): Template
+    public function store(User $user, string $name, UploadedFile $file): Template
     {
         $isFirst = Template::count() === 0;
 
@@ -27,7 +30,7 @@ class TemplateService
             'isDefault' => $isFirst,
         ]);
 
-        $stored = $file->storeAs(self::DIR, $template->id . '_' . $file->getClientOriginalName());
+        $stored = $file->storeAs(self::DIR, $template->id.'_'.$file->getClientOriginalName());
         $template->update(['filePath' => Storage::path($stored)]);
 
         return $template->fresh();
@@ -35,7 +38,7 @@ class TemplateService
 
     public function setDefault(Template $template): Template
     {
-        \Illuminate\Support\Facades\DB::transaction(function () use ($template) {
+        DB::transaction(function () use ($template) {
             Template::where('isDefault', true)->update(['isDefault' => false]);
             $template->update(['isDefault' => true]);
         });
@@ -57,6 +60,7 @@ class TemplateService
         if ($templateId && ($t = Template::find($templateId))) {
             return $t;
         }
+
         return Template::where('isDefault', true)->first();
     }
 
@@ -70,10 +74,11 @@ class TemplateService
             if (! file_exists($template->filePath)) {
                 $this->restoreBaseFile($template->filePath);
             }
+
             return $template;
         }
 
-        $path = Storage::path(self::DIR . '/default.docx');
+        $path = Storage::path(self::DIR.'/default.docx');
         $this->restoreBaseFile($path);
 
         return Template::create([
@@ -95,6 +100,7 @@ class TemplateService
         if (file_exists($assets)) {
             @mkdir(dirname($path), 0777, true);
             copy($assets, $path);
+
             return;
         }
         $this->buildBaseFile($path);
@@ -105,12 +111,12 @@ class TemplateService
     {
         @mkdir(dirname($path), 0777, true);
 
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
         $section = $phpWord->addSection();
         $section->addTitle('Informe de trámites', 1);
         foreach (['FECHA', 'NRO_CI', 'DIRIGIDO_A', 'PUESTO_DIRIGIDO_A', 'REMITENTE',
-                     'PUESTO_REMITENTE', 'NRO_SEMANA', 'FECHA_INICIO', 'FECHA_FIN'] as $ph) {
-            $section->addText($ph . ': ${' . $ph . '}');
+            'PUESTO_REMITENTE', 'NRO_SEMANA', 'FECHA_INICIO', 'FECHA_FIN'] as $ph) {
+            $section->addText($ph.': ${'.$ph.'}');
         }
 
         $section->addTitle('Trámites ingresados', 2);
@@ -131,6 +137,9 @@ class TemplateService
         $section->addText('${GRAFICO_INGRESO}');
         $section->addText('${GRAFICO_ENTREGA}');
 
-        (new \PhpOffice\PhpWord\Writer\Word2007($phpWord))->save($path);
+        $section->addTitle('Tendencia diaria del mes', 2);
+        $section->addText('${GRAFICO_TENDENCIA}');
+
+        (new Word2007($phpWord))->save($path);
     }
 }

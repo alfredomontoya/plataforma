@@ -4,10 +4,14 @@ namespace Tests\Feature;
 
 use App\Models\Entry;
 use App\Models\Service;
+use App\Models\User;
 use App\Services\UserService;
 use Carbon\Carbon;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use PhpOffice\PhpWord\PhpWord;
+use PhpOffice\PhpWord\Writer\Word2007;
 use Tests\TestCase;
 
 class DashboardReportsTest extends TestCase
@@ -22,12 +26,12 @@ class DashboardReportsTest extends TestCase
 
     private function seedDay(string $day, int $ingQty, int $entQty): void
     {
-        $opI = \App\Models\User::where('username', 'ing1')->first()
+        $opI = User::where('username', 'ing1')->first()
             ?? app(UserService::class)->createWithPosition([
                 'username' => 'ing1', 'password' => 'password', 'role' => 'OPERATOR_INGRESO',
                 'title' => 'LIC', 'firstName' => 'I', 'lastName' => 'U', 'position' => 'C', 'department' => 'D',
             ]);
-        $opE = \App\Models\User::where('username', 'ent1')->first()
+        $opE = User::where('username', 'ent1')->first()
             ?? app(UserService::class)->createWithPosition([
                 'username' => 'ent1', 'password' => 'password', 'role' => 'OPERATOR_ENTREGA',
                 'title' => 'LIC', 'firstName' => 'E', 'lastName' => 'U', 'position' => 'C', 'department' => 'D',
@@ -88,7 +92,7 @@ class DashboardReportsTest extends TestCase
     public function test_dashboard_weekly_y_range_con_tope(): void
     {
         $jefe = $this->jefe();
-        $monday = now('UTC')->startOfWeek(\Carbon\Carbon::MONDAY)->toDateString();
+        $monday = now('UTC')->startOfWeek(Carbon::MONDAY)->toDateString();
         $this->seedDay($monday, 6, 2);
 
         $w = $this->actingAs($jefe, 'sanctum')->getJson("/api/reports/dashboard/weekly?weekStart={$monday}");
@@ -140,6 +144,141 @@ class DashboardReportsTest extends TestCase
         $this->assertDatabaseCount('reports', 0);
     }
 
+    public function test_reporte_incrusta_tres_graficos(): void
+    {
+        $jefe = $this->jefe();
+        $today = now('UTC')->toDateString();
+        $this->seedDay($today, 7, 3);
+
+        $gen = $this->actingAs($jefe, 'sanctum')->postJson('/api/reports/generate', [
+            'mode' => 'DAY', 'date' => $today,
+            'nroCI' => 'INF-002', 'dirigidoA' => 'Director', 'puestoDirigidoA' => 'Dirección',
+        ]);
+        $gen->assertCreated();
+
+        $path = $gen->json('data.filePath');
+        $zip = new \ZipArchive;
+        $this->assertTrue($zip->open($path) === true);
+        $pngs = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = (string) $zip->getNameIndex($i);
+            if (str_starts_with($name, 'word/media/') && str_ends_with($name, '.png')) {
+                $pngs[] = $name;
+            }
+        }
+        // Dos tortas (ingreso/entrega) + tendencia diaria del mes.
+        $this->assertCount(3, $pngs, 'Deben incrustarse 3 gráficos PNG: '.implode(',', $pngs));
+        $xml = $zip->getFromName('word/document.xml');
+        $zip->close();
+        $this->assertStringNotContainsString('GRAFICO', $xml);
+    }
+
+    /** PNG de color plano para verificar que se incrusta exactamente el enviado. */
+    private function tinyPng(int $r, int $g, int $b): string
+    {
+        $img = imagecreatetruecolor(2, 2);
+        imagefill($img, 0, 0, imagecolorallocate($img, $r, $g, $b));
+        ob_start();
+        imagepng($img);
+        $bytes = (string) ob_get_clean();
+        imagedestroy($img);
+
+        return $bytes;
+    }
+
+    /** Plantilla explícita estilo anterior (filas legacy + 3 gráficos viejos). */
+    private function oldStyleTemplate(User $jefe): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'tpl').'.docx';
+        $pw = new PhpWord;
+        $section = $pw->addSection();
+        $section->addText('Informe ${NRO_CI}');
+        foreach ([['${ING_NOMBRE}', '${ING_TOTAL}'], ['${ENT_NOMBRE}', '${ENT_TOTAL}']] as [$a, $b]) {
+            $table = $section->addTable();
+            $table->addRow();
+            $table->addCell()->addText($a);
+            $table->addCell()->addText($b);
+        }
+        $section->addText('${GRAFICO_INGRESO}');
+        $section->addText('${GRAFICO_ENTREGA}');
+        $section->addText('${GRAFICO_TENDENCIA}');
+        (new Word2007($pw))->save($path);
+
+        return $this->actingAs($jefe, 'sanctum')->post('/api/templates', [
+            'name' => 'Vieja',
+            'file' => new UploadedFile($path, 'vieja.docx',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document', null, true),
+        ])->assertCreated()->json('data.id');
+    }
+
+    public function test_generate_rango_incrusta_graficos_del_dashboard(): void
+    {
+        $jefe = $this->jefe();
+        $from = now('UTC')->subDays(2)->toDateString();
+        $to = now('UTC')->toDateString();
+        $this->seedDay($from, 4, 1);
+        $this->seedDay($to, 6, 2);
+        $templateId = $this->oldStyleTemplate($jefe);
+
+        $png = $this->tinyPng(255, 0, 0);
+        $b64 = base64_encode($png);
+
+        $gen = $this->actingAs($jefe, 'sanctum')->postJson('/api/reports/generate', [
+            'mode' => 'RANGE', 'from' => $from, 'to' => $to,
+            'templateId' => $templateId,
+            'nroCI' => 'INF-RANGE', 'dirigidoA' => 'Director', 'puestoDirigidoA' => 'Dirección',
+            'charts' => [
+                'grafico_ingreso' => 'data:image/png;base64,'.$b64,
+                'grafico_entrega' => $b64,
+                'grafico_tendencia' => 'data:image/png;base64,'.$b64,
+            ],
+        ]);
+        $gen->assertCreated()->assertJsonPath('data.mode', 'RANGE');
+        $this->assertEquals(10, $gen->json('data.totalIngreso'));
+        $this->assertEquals(3, $gen->json('data.totalEntrega'));
+
+        $zip = new \ZipArchive;
+        $this->assertTrue($zip->open($gen->json('data.filePath')) === true);
+        $media = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = (string) $zip->getNameIndex($i);
+            if (str_starts_with($name, 'word/media/') && str_ends_with($name, '.png')) {
+                $media[] = $zip->getFromName($name);
+            }
+        }
+        $zip->close();
+        $this->assertCount(3, $media, 'Deben incrustarse los 3 gráficos enviados por el dashboard.');
+        foreach ($media as $bytes) {
+            $this->assertSame($png, $bytes, 'El PNG incrustado debe ser exactamente el enviado.');
+        }
+    }
+
+    public function test_generate_rango_requiere_fechas(): void
+    {
+        $jefe = $this->jefe();
+        $res = $this->actingAs($jefe, 'sanctum')->postJson('/api/reports/generate', [
+            'mode' => 'RANGE', 'nroCI' => 'INF-X', 'dirigidoA' => 'Director', 'puestoDirigidoA' => 'Dirección',
+        ]);
+        $res->assertStatus(400)->assertJson(['success' => false]);
+        $this->assertArrayHasKey('from', $res->json('details'));
+        $this->assertArrayHasKey('to', $res->json('details'));
+        $this->assertDatabaseCount('reports', 0);
+    }
+
+    public function test_generate_grafico_adjunto_invalido(): void
+    {
+        $jefe = $this->jefe();
+        $today = now('UTC')->toDateString();
+        $this->seedDay($today, 1, 1);
+
+        $this->actingAs($jefe, 'sanctum')->postJson('/api/reports/generate', [
+            'mode' => 'DAY', 'date' => $today,
+            'nroCI' => 'INF-BAD', 'dirigidoA' => 'Director', 'puestoDirigidoA' => 'Dirección',
+            'charts' => ['grafico_ingreso' => 'esto-no-es-un-png'],
+        ])->assertStatus(422)->assertJson(['success' => false]);
+        $this->assertDatabaseCount('reports', 0);
+    }
+
     public function test_templates_crud_y_default(): void
     {
         $jefe = $this->jefe();
@@ -147,20 +286,20 @@ class DashboardReportsTest extends TestCase
 
         $auth()->getJson('/api/templates/default')->assertStatus(404);
 
-        $doc = tempnam(sys_get_temp_dir(), 'tpl') . '.docx';
-        $pw = new \PhpOffice\PhpWord\PhpWord();
+        $doc = tempnam(sys_get_temp_dir(), 'tpl').'.docx';
+        $pw = new PhpWord;
         $pw->addSection()->addText('hola ${FECHA}');
-        (new \PhpOffice\PhpWord\Writer\Word2007($pw))->save($doc);
+        (new Word2007($pw))->save($doc);
 
         $up = $auth()->post('/api/templates', [
-            'name' => 'Base', 'file' => new \Illuminate\Http\UploadedFile($doc, 'base.docx',
+            'name' => 'Base', 'file' => new UploadedFile($doc, 'base.docx',
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', null, true),
         ]);
         $up->assertCreated();
         $this->assertTrue($up->json('data.isDefault'));
 
         $auth()->getJson('/api/templates/default')->assertOk();
-        $auth()->deleteJson('/api/templates/' . $up->json('data.id'))->assertOk();
+        $auth()->deleteJson('/api/templates/'.$up->json('data.id'))->assertOk();
         @unlink($doc);
     }
 }
