@@ -10,8 +10,7 @@ use Illuminate\Support\Facades\Storage;
 class DatabaseSeeder extends Seeder
 {
     /**
-     * db:seed vacía todo primero (7 tablas + huérfanos en storage).
-     * Orden: wipe → roles → usuarios → servicios → plantillas → entradas.
+     * db:seed: wipe (con guarda de entorno) → roles → usuarios → servicios → plantillas.
      */
     public function run(): void
     {
@@ -26,7 +25,27 @@ class DatabaseSeeder extends Seeder
         ]);
     }
 
-    public static function wipe(): void
+    /**
+     * Borrado masivo de tablas y archivos (destructivo).
+     *
+     * En producción NO hace nada salvo $force (requiere --force explícito en el
+     * comando); en local/test pide confirmación interactiva.
+     *
+     * @param  bool  $force  permite el wipe en producción
+     */
+    public static function wipe(bool $force = false): void
+    {
+        if (! $force && ! self::destructiveAllowed('wipe')) {
+            return;
+        }
+
+        self::wipeData();
+    }
+
+    /**
+     * Vacía las tablas y archivos sin comprobar el entorno (uso interno).
+     */
+    public static function wipeData(): void
     {
         Schema::disableForeignKeyConstraints();
         foreach (['reports', 'daily_totals', 'entries', 'templates', 'positions', 'services',
@@ -40,5 +59,11 @@ class DatabaseSeeder extends Seeder
                 Storage::delete($file);
             }
         }
+    }
+
+    /** ¿Permitido borrar datos? Producción exige --force; local/test confirman. */
+    public static function destructiveAllowed(): bool
+    {
+        return ! app()->environment('production');
     }
 }

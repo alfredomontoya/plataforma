@@ -7,6 +7,7 @@ use App\Models\Template;
 use App\Services\TemplateInspector;
 use App\Services\TemplateService;
 use App\Support\ApiResponse;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -41,24 +42,53 @@ class TemplateController extends Controller
     {
         $request->validate([
             'name' => ['required', 'string', 'max:191'],
-            'file' => ['required', 'file', 'mimetypes:application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'max:10240'],
+            'file' => ['required', 'file', 'mimes:docx,zip',
+                'mimetypes:application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip',
+                'max:10240'],
         ], [
+            'file.mimes' => 'Solo se permiten archivos .docx.',
             'file.mimetypes' => 'Solo se permiten archivos .docx.',
         ]);
 
+        $file = $request->file('file');
+        // El .docx es un ZIP: se valida estructura y tamaño descomprimido real.
+        TemplateService::assertValidDocx($file->getRealPath());
+
         return ApiResponse::created(
-            $templates->store($request->user(), $request->input('name'), $request->file('file'))
+            $templates->store($request->user(), $request->input('name'), $file)
         );
     }
 
-    public function setDefault(string $id, TemplateService $templates): JsonResponse
+    /** True si el usuario puede mutar la plantilla (ADMIN o dueño). */
+    private function canMutate(Request $request, Template $template): bool
     {
-        return ApiResponse::ok($templates->setDefault(Template::findOrFail($id)));
+        return $request->user()->role === 'ADMIN'
+            || $template->uploadedById === $request->user()->id;
     }
 
-    public function destroy(string $id, TemplateService $templates): JsonResponse
+    /** Aborta 403 con el envelope de error si el usuario no puede mutar (A4). */
+    private function assertCanMutate(Request $request, Template $template): void
     {
-        $templates->destroy(Template::findOrFail($id));
+        if (! $this->canMutate($request, $template)) {
+            throw new HttpResponseException(
+                ApiResponse::error('Sin permiso para modificar esta plantilla.', 403)
+            );
+        }
+    }
+
+    public function setDefault(Request $request, string $id, TemplateService $templates): JsonResponse
+    {
+        $template = Template::findOrFail($id);
+        $this->assertCanMutate($request, $template);
+
+        return ApiResponse::ok($templates->setDefault($template));
+    }
+
+    public function destroy(Request $request, string $id, TemplateService $templates): JsonResponse
+    {
+        $template = Template::findOrFail($id);
+        $this->assertCanMutate($request, $template);
+        $templates->destroy($template);
 
         return ApiResponse::ok(['message' => 'Plantilla eliminada.']);
     }
@@ -70,12 +100,16 @@ class TemplateController extends Controller
             return ApiResponse::error('Archivo no encontrado.', 404);
         }
 
-        return response()->download($template->filePath, $template->fileName);
+        return response()->download(
+            $template->filePath,
+            basename(TemplateService::sanitizeFileName($template->fileName))
+        );
     }
 
     public function inspect(string $id, TemplateInspector $inspector): JsonResponse
     {
         $template = Template::findOrFail($id);
+        TemplateService::assertValidDocx($template->filePath);
 
         return ApiResponse::ok($inspector->inspect($template->filePath));
     }
@@ -83,6 +117,7 @@ class TemplateController extends Controller
     public function paragraphs(string $id, TemplateInspector $inspector): JsonResponse
     {
         $template = Template::findOrFail($id);
+        TemplateService::assertValidDocx($template->filePath);
 
         return ApiResponse::ok($inspector->paragraphs($template->filePath));
     }
@@ -94,9 +129,11 @@ class TemplateController extends Controller
             'texts.*' => ['required', 'string', 'max:2000'],
         ]);
         $template = Template::findOrFail($id);
+        $this->assertCanMutate($request, $template);
         if (! file_exists($template->filePath)) {
             return ApiResponse::error('Archivo no encontrado.', 404);
         }
+        TemplateService::assertValidDocx($template->filePath);
         $inspector->updateParagraphs($template->filePath, $data['texts']);
 
         return ApiResponse::ok(['message' => 'Plantilla actualizada.']);
@@ -108,27 +145,32 @@ class TemplateController extends Controller
             'text' => ['required', 'string', 'max:2000'],
         ]);
         $template = Template::findOrFail($id);
+        $this->assertCanMutate($request, $template);
         if (! file_exists($template->filePath)) {
             return ApiResponse::error('Archivo no encontrado.', 404);
         }
+        TemplateService::assertValidDocx($template->filePath);
 
         return ApiResponse::created($inspector->appendParagraph($template->filePath, $data['text']));
     }
 
-    public function duplicate(string $id): JsonResponse
+    public function duplicate(Request $request, string $id): JsonResponse
     {
         $template = Template::findOrFail($id);
+        $this->assertCanMutate($request, $template);
         if (! file_exists($template->filePath)) {
             return ApiResponse::error('Archivo no encontrado.', 404);
         }
+        $fileName = basename(TemplateService::sanitizeFileName($template->fileName));
         $copy = Template::create([
             'name' => $template->name.' (copia)',
-            'fileName' => $template->fileName,
+            'fileName' => $fileName,
             'filePath' => '',
-            'uploadedById' => request()->user()->id,
+            'uploadedById' => $request->user()->id,
             'isDefault' => false,
         ]);
-        $dest = dirname($template->filePath).'/'.$copy->id.'_'.$template->fileName;
+        // Destino siempre dentro del directorio de la original, con nombre saneado.
+        $dest = dirname($template->filePath).'/'.$copy->id.'_'.$fileName;
         copy($template->filePath, $dest);
         $copy->update(['filePath' => $dest]);
 

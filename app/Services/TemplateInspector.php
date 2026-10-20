@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Support\ApiResponse;
+use App\Support\SafeXml;
 use Illuminate\Http\Exceptions\HttpResponseException;
 
 /**
@@ -151,8 +152,8 @@ class TemplateInspector
         $ns = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
         foreach ($byPart as $part => $edits) {
             $xml = $zip->getFromName($part);
-            $dom = new \DOMDocument('1.0', 'UTF-8');
-            if (! is_string($xml) || ! @$dom->loadXML($xml)) {
+            $dom = is_string($xml) ? SafeXml::load($xml) : null;
+            if (! $dom) {
                 $zip->close();
                 throw new HttpResponseException(ApiResponse::error('Plantilla corrupta.', 400));
             }
@@ -190,8 +191,8 @@ class TemplateInspector
         }
         $ns = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
         $xml = $zip->getFromName('word/document.xml');
-        $dom = new \DOMDocument('1.0', 'UTF-8');
-        if (! is_string($xml) || ! @$dom->loadXML($xml)) {
+        $dom = is_string($xml) ? SafeXml::load($xml) : null;
+        if (! $dom) {
             $zip->close();
             throw new HttpResponseException(ApiResponse::error('Plantilla corrupta.', 400));
         }
@@ -240,8 +241,8 @@ class TemplateInspector
             if (! is_string($xml)) {
                 continue;
             }
-            $dom = new \DOMDocument('1.0', 'UTF-8');
-            if (! @$dom->loadXML($xml)) {
+            $dom = is_string($xml) ? SafeXml::load($xml) : null;
+            if (! $dom) {
                 continue;
             }
             $xp = new \DOMXPath($dom);

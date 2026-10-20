@@ -32,7 +32,8 @@ Route::prefix('users')->middleware(['auth:sanctum', 'role:ADMIN'])->group(functi
 });
 
 Route::prefix('services')->group(function () {
-    Route::get('/type/{type}', [ServiceController::class, 'byType'])->middleware('auth:sanctum');
+    Route::get('/type/{type}', [ServiceController::class, 'byType'])
+        ->middleware(['auth:sanctum', 'role:ADMIN|OPERATOR_INGRESO|OPERATOR_ENTREGA']);
     Route::prefix('admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(function () {
         Route::get('/', [ServiceController::class, 'index']);
         Route::post('/', [ServiceController::class, 'store']);

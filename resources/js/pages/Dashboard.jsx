@@ -7,7 +7,7 @@ import { RangeDatePicker } from '../components/ui/RangeDatePicker';
 import { ArrowDownTrayIcon, ArrowUpTrayIcon, DocumentChartBarIcon, Squares2X2Icon, UserGroupIcon } from '@heroicons/react/24/outline';
 import { useToast } from '../components/ui/Toast';
 import { BarChart, KpiCard, PieChart, TrendChart } from '../components/charts/charts';
-import { nextNro, parseNro, pie, saveBlob } from '../lib/reportShared';
+import { nextNro, parseNro, pie, saveBlob, sanitizeLinks } from '../lib/reportShared';
 import { svgChartsToPng } from '../lib/chartExport';
 import { barSvg, pieSvg, trendSvg } from '../lib/chartSvg';
 
@@ -297,6 +297,7 @@ export default function Dashboard() {
                         if (previewRef.current) {
                             previewRef.current.innerHTML = '';
                             await renderAsync(await blob.arrayBuffer(), previewRef.current);
+                            sanitizeLinks(previewRef.current);
                         }
                     } catch {
                         toastError('No se pudo mostrar la vista previa.');

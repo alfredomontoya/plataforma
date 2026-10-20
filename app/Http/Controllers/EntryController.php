@@ -65,6 +65,7 @@ class EntryController extends Controller
 
     public function summaryDaily(Request $request, \App\Services\DashboardService $dash): JsonResponse
     {
+        $this->validateDateParams($request, ['date']);
         $date = $request->query('date', BusinessDay::todayUtc()->toDateString());
         $type = $request->query('type', 'INGRESO');
         $day = $dash->day($date);
@@ -78,6 +79,7 @@ class EntryController extends Controller
 
     public function summaryByOperator(Request $request, \App\Services\DashboardService $dash): JsonResponse
     {
+        $this->validateDateParams($request, ['date']);
         $date = $request->query('date', BusinessDay::todayUtc()->toDateString());
         $day = $dash->day($date);
 
@@ -94,6 +96,10 @@ class EntryController extends Controller
 
     private function applyDateFilters($query, Request $request): void
     {
+        // (M6) Valida formato YYYY-MM-DD antes de parsear (evita 500 en BusinessDay).
+        // (M5) Tope de rango de fechas para evitar consultas DoS.
+        $this->validateDateParams($request, ['date', 'from', 'to']);
+
         if ($date = $request->query('date')) {
             $day = BusinessDay::parseUtcDay($date);
             $query->where('date', '>=', $day)->where('date', '<', $day->copy()->addDay());
@@ -103,6 +109,33 @@ class EntryController extends Controller
         }
         if ($to = $request->query('to')) {
             $query->where('date', '<', BusinessDay::parseUtcDay($to)->addDay());
+        }
+    }
+
+    /**
+     * Valida que los parámetros de fecha indicados sean YYYY-MM-DD y, cuando hay
+     * `from` y `to`, que el rango no supere 366 días (M5/M6). Lanza
+     * ValidationException → el handler global responde 400 con el envelope.
+     */
+    private function validateDateParams(Request $request, array $fields): void
+    {
+        $rules = [];
+        foreach ($fields as $field) {
+            $rules[$field] = ['nullable', 'date_format:Y-m-d'];
+        }
+
+        $request->validate($rules);
+
+        $from = $request->query('from');
+        $to = $request->query('to');
+
+        if ($from && $to) {
+            $diff = abs(BusinessDay::parseUtcDay($to)->diffInDays(BusinessDay::parseUtcDay($from)));
+            if ($diff > 366) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'to' => 'El rango de fechas no puede superar 366 días.',
+                ]);
+            }
         }
     }
 }

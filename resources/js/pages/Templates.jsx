@@ -11,7 +11,7 @@ const MARCADORES = [
 ];
 import { renderAsync } from 'docx-preview';
 import api, { todayLocal, toLocalDay } from '../lib/api';
-import { saveBlob } from '../lib/reportShared';
+import { saveBlob, sanitizeLinks } from '../lib/reportShared';
 import { RoleGuard } from '../components/layout/RoleGuard';
 import { Button, Input, Modal } from '../components/ui/controls';
 import WordSheet from '../components/WordSheet';
@@ -216,6 +216,7 @@ export default function Templates() {
                         if (exampleRef.current) {
                             exampleRef.current.innerHTML = '';
                             await renderAsync(await blob.arrayBuffer(), exampleRef.current);
+                            sanitizeLinks(exampleRef.current);
                         }
                     } catch {
                         toastError('No se pudo mostrar la vista previa.');

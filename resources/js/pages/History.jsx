@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { renderAsync } from 'docx-preview';
 import api, { todayLocal } from '../lib/api';
-import { saveBlob } from '../lib/reportShared';
+import { saveBlob, sanitizeLinks } from '../lib/reportShared';
 import { RoleGuard } from '../components/layout/RoleGuard';
 import { Button, DatePicker, Input, Modal } from '../components/ui/controls';
 import { useToast } from '../components/ui/Toast';
@@ -87,6 +87,7 @@ export default function History() {
                 if (previewRef.current) {
                     previewRef.current.innerHTML = '';
                     await renderAsync(await blob.arrayBuffer(), previewRef.current);
+                    sanitizeLinks(previewRef.current);
                 }
             } catch {
                 toastError('No se pudo mostrar la vista previa.');

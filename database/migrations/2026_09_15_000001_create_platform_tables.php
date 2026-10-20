@@ -37,6 +37,11 @@ return new class extends Migration
 
         Schema::create('password_reset_tokens', function (Blueprint $table) {
             $table->string('username', 50)->primary();
+            // (M13) La app NO tiene flujo de "olvidé mi contraseña" (ningún
+            // controlador usa esta tabla). Si en el futuro se implementa el reset,
+            // NO se debe guardar el token en claro: almacenar `Hash::make($token)`
+            // y comparar con `Hash::check()`. El esquema se mantiene (string) porque
+            // el hash cabe en la columna.
             $table->string('token');
             $table->timestamp('created_at')->nullable();
         });

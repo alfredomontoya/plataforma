@@ -78,6 +78,11 @@ class AuthController extends Controller
 
         $user->update(['password' => $data['newPassword']]);
 
+        // (A8) Al cambiar la contraseña se revocan los demás tokens del usuario
+        // (se conserva el token con el que se autenticó esta petición).
+        $currentTokenId = $request->user()->currentAccessToken()?->id;
+        $user->tokens()->when($currentTokenId, fn ($q) => $q->where('id', '!=', $currentTokenId))->delete();
+
         return ApiResponse::ok(['message' => 'Contraseña actualizada.']);
     }
 
@@ -89,6 +94,9 @@ class AuthController extends Controller
         $user = User::findOrFail($id);
         $temporary = Str::random(10);
         $user->update(['password' => $temporary]);
+
+        // (A8) El reseteo por ADMIN revoca TODOS los tokens del usuario reseteado.
+        $user->tokens()->delete();
 
         return ApiResponse::ok(['temporaryPassword' => $temporary]);
     }

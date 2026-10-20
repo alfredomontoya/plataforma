@@ -9,6 +9,7 @@ use App\Support\BusinessDay;
 use App\Support\GdBarChart;
 use App\Support\GdPieChart;
 use App\Support\GdTrendChart;
+use App\Support\SafeXml;
 use Carbon\Carbon;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\Storage;
@@ -144,40 +145,43 @@ class ReportService
 
         // Los gráficos pueden venir renderizados por el dashboard (PNG base64);
         // si no, se generan con GD como en el flujo clásico de informes.
-        $ingPng = $this->chartPng($charts['grafico_ingreso'] ?? null) ?? $this->pie($computed['ingreso'], 'ing');
-        $entPng = $this->chartPng($charts['grafico_entrega'] ?? null) ?? $this->pie($computed['entrega'], 'ent');
-        // Ancho útil de la plantilla ≈ 9498 twips (≈ 633 px a 96 dpi):
-        // los gráficos ocupan todo el ancho y conservan proporción.
-        $tp->setImageValue('GRAFICO_INGRESO', ['path' => $ingPng, 'width' => 630, 'height' => 394, 'ratio' => true]);
-        $tp->setImageValue('GRAFICO_ENTREGA', ['path' => $entPng, 'width' => 630, 'height' => 394, 'ratio' => true]);
+        // La limpieza va en finally: los PNG nunca quedan huérfanos aunque
+        // falle un setImageValue o saveAs (M13/H-13).
+        $pngs = [];
+        try {
+            $pngs['ing'] = $this->chartPng($charts['grafico_ingreso'] ?? null) ?? $this->pie($computed['ingreso'], 'ing');
+            $pngs['ent'] = $this->chartPng($charts['grafico_entrega'] ?? null) ?? $this->pie($computed['entrega'], 'ent');
+            // Ancho útil de la plantilla ≈ 9498 twips (≈ 633 px a 96 dpi):
+            // los gráficos ocupan todo el ancho y conservan proporción.
+            $tp->setImageValue('GRAFICO_INGRESO', ['path' => $pngs['ing'], 'width' => 630, 'height' => 394, 'ratio' => true]);
+            $tp->setImageValue('GRAFICO_ENTREGA', ['path' => $pngs['ent'], 'width' => 630, 'height' => 394, 'ratio' => true]);
 
-        $trendPng = $this->chartPng($charts['grafico_tendencia'] ?? null) ?? $this->trend();
-        $tp->setImageValue('GRAFICO_TENDENCIA', ['path' => $trendPng, 'width' => 630, 'height' => 301, 'ratio' => true]);
+            $pngs['trend'] = $this->chartPng($charts['grafico_tendencia'] ?? null) ?? $this->trend();
+            $tp->setImageValue('GRAFICO_TENDENCIA', ['path' => $pngs['trend'], 'width' => 630, 'height' => 301, 'ratio' => true]);
 
-        // Gráficos del total diario (dashboard): PNG del frontend o GD en alta resolución.
-        $distPng = $this->chartPng($charts['grafico_distribucion'] ?? null)
-            ?? $this->pieTotals($computed['totals']['byTramite']);
-        $tp->setImageValue('GRAFICO_DISTRIBUCION_TRAMITE', ['path' => $distPng, 'width' => 630, 'height' => 394, 'ratio' => true]);
+            // Gráficos del total diario (dashboard): PNG del frontend o GD en alta resolución.
+            $pngs['dist'] = $this->chartPng($charts['grafico_distribucion'] ?? null)
+                ?? $this->pieTotals($computed['totals']['byTramite']);
+            $tp->setImageValue('GRAFICO_DISTRIBUCION_TRAMITE', ['path' => $pngs['dist'], 'width' => 630, 'height' => 394, 'ratio' => true]);
 
-        $barPng = $this->chartPng($charts['grafico_barras'] ?? null)
-            ?? $this->barsTotals($computed['totals']['byTramite']);
-        $tp->setImageValue('GRAFICO_TOTAL_TRAMITE', ['path' => $barPng, 'width' => 630, 'height' => 394, 'ratio' => true]);
+            $pngs['bar'] = $this->chartPng($charts['grafico_barras'] ?? null)
+                ?? $this->barsTotals($computed['totals']['byTramite']);
+            $tp->setImageValue('GRAFICO_TOTAL_TRAMITE', ['path' => $pngs['bar'], 'width' => 630, 'height' => 394, 'ratio' => true]);
 
-        $trendDiaPng = $this->chartPng($charts['grafico_tendencia_dia'] ?? null)
-            ?? $this->trendDia($computed['totals']['daily']);
-        $tp->setImageValue('GRAFICO_TENDENCIA_DIA', ['path' => $trendDiaPng, 'width' => 630, 'height' => 301, 'ratio' => true]);
+            $pngs['trendDia'] = $this->chartPng($charts['grafico_tendencia_dia'] ?? null)
+                ?? $this->trendDia($computed['totals']['daily']);
+            $tp->setImageValue('GRAFICO_TENDENCIA_DIA', ['path' => $pngs['trendDia'], 'width' => 630, 'height' => 301, 'ratio' => true]);
 
-        @mkdir(dirname($outputPath), 0777, true);
-        $tp->saveAs($outputPath);
-        if ($cleanup) {
-            @unlink($workingPath);
+            @mkdir(dirname($outputPath), 0777, true);
+            $tp->saveAs($outputPath);
+        } finally {
+            if ($cleanup) {
+                @unlink($workingPath);
+            }
+            foreach ($pngs as $png) {
+                @unlink($png);
+            }
         }
-        @unlink($ingPng);
-        @unlink($entPng);
-        @unlink($trendPng);
-        @unlink($distPng);
-        @unlink($barPng);
-        @unlink($trendDiaPng);
     }
 
     /** true si la plantilla usa ${VAR} (sistema); false si usa {VAR} (institucional). */
@@ -366,8 +370,8 @@ class ReportService
             return;
         }
         $xml = $zip->getFromName('word/document.xml');
-        $dom = new \DOMDocument('1.0', 'UTF-8');
-        if (! is_string($xml) || ! @$dom->loadXML($xml)) {
+        $dom = is_string($xml) ? SafeXml::load($xml) : null;
+        if (! $dom) {
             $zip->close();
 
             return;
@@ -425,8 +429,8 @@ class ReportService
     /** Reemplaza el párrafo ancla por una tabla con encabezados y filas dadas. */
     private function swapMarkerForTable(string $xml, string $marker, array $headers, array $rows): string
     {
-        $dom = new \DOMDocument('1.0', 'UTF-8');
-        if (! @$dom->loadXML($xml)) {
+        $dom = SafeXml::load($xml);
+        if (! $dom) {
             return $xml;
         }
         $ns = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -629,15 +633,32 @@ class ReportService
                 ApiResponse::error('El gráfico adjunto no es una imagen válida.', 422)
             );
         }
-        $path = tempnam(sys_get_temp_dir(), 'chart').'.png';
+        // Límite del binario decodificado (anti memoria): 6 MB.
+        if (strlen($binary) > 6 * 1024 * 1024) {
+            throw new HttpResponseException(
+                ApiResponse::error('El gráfico adjunto excede el tamaño permitido.', 422)
+            );
+        }
+        $path = $this->tmpDir().'/chart_'.uniqid().'.png';
         file_put_contents($path, $binary);
 
         return $path;
     }
 
+    /** Directorio temporal privado (0700) para PNG temporales (M13/H-13). */
+    private function tmpDir(): string
+    {
+        $dir = storage_path('app/private/tmp');
+        if (! is_dir($dir)) {
+            @mkdir($dir, 0700, true);
+        }
+
+        return $dir;
+    }
+
     private function pie(array $items, string $prefix, int $width = 760, int $height = 420): string
     {
-        $path = sys_get_temp_dir()."/{$prefix}_".uniqid().'.png';
+        $path = $this->tmpDir()."/{$prefix}_".uniqid().'.png';
 
         // Etiquetas y leyenda igual que el dashboard: labels con código y
         // leyenda "código – nombre" con porcentaje entre paréntesis.
@@ -677,7 +698,7 @@ class ReportService
     /** Barras del total diario en alta resolución. */
     private function barsTotals(array $byTramite): string
     {
-        $path = sys_get_temp_dir().'/bars_'.uniqid().'.png';
+        $path = $this->tmpDir().'/bars_'.uniqid().'.png';
         $labels = [];
         $values = [];
         foreach ($byTramite as $i) {
@@ -699,7 +720,7 @@ class ReportService
             fn ($r) => ['day' => substr($r['date'], 8, 2), 'total' => $r['total']],
             $daily
         );
-        $path = sys_get_temp_dir().'/trenddia_'.uniqid().'.png';
+        $path = $this->tmpDir().'/trenddia_'.uniqid().'.png';
 
         return GdTrendChart::render($points, $path, 1200, 570, [['total', 'Total', [147, 51, 234]]]);
     }
@@ -717,7 +738,7 @@ class ReportService
             $rows
         );
 
-        $path = sys_get_temp_dir().'/trend_'.uniqid().'.png';
+        $path = $this->tmpDir().'/trend_'.uniqid().'.png';
 
         return GdTrendChart::render($points, $path);
     }

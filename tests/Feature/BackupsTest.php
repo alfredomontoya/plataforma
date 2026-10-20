@@ -121,6 +121,7 @@ class BackupsTest extends TestCase
         $auth()->postJson('/api/backups/config', ['directory' => '', 'max' => 10])->assertStatus(400);
 
         // dentro de public/ → 400
+        // (la ruta la resuelve/crea el servicio con mkdir; debe rechazarla y borrar el resto)
         $auth()->postJson('/api/backups/config', ['directory' => base_path('public/backups-x'), 'max' => 10])->assertStatus(400);
         $this->assertDirectoryDoesNotExist(base_path('public/backups-x'));
 

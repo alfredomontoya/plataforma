@@ -18,6 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->statefulApi();
+        // (A7) Rate limiting global para /api/*: 120 peticiones por minuto por clave.
+        $middleware->throttleApi('120,1');
         $middleware->web(append: [
             \App\Http\Middleware\HandleInertiaRequests::class,
         ]);

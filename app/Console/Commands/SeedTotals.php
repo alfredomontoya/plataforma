@@ -23,6 +23,12 @@ class SeedTotals extends Command
 
     public function handle(): int
     {
+        if (app()->environment('production') && ! $this->option('force')) {
+            $this->error('platform:totals-seed está bloqueado en producción (genera datos demo). Use --force para confirmar.');
+
+            return self::FAILURE;
+        }
+
         if ($this->option('from') && $this->option('to') && $this->option('from') > $this->option('to')) {
             $this->error('from no puede ser posterior a to.');
 

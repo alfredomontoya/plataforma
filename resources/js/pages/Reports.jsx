@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { renderAsync } from 'docx-preview';
 import api, { todayLocal } from '../lib/api';
-import { parseNro, nextNro, saveBlob } from '../lib/reportShared';
+import { parseNro, nextNro, saveBlob, sanitizeLinks } from '../lib/reportShared';
 import { RoleGuard } from '../components/layout/RoleGuard';
 import { Button, DatePicker, Input, Modal, Select } from '../components/ui/controls';
 import { useToast } from '../components/ui/Toast';
@@ -83,7 +83,10 @@ export default function Reports() {
             // Se renderiza tras abrir el modal (el contenedor debe existir en el DOM).
             requestAnimationFrame(async () => {
                 try {
-                    if (previewRef.current) await renderAsync(await blob.arrayBuffer(), previewRef.current);
+                    if (previewRef.current) {
+                        await renderAsync(await blob.arrayBuffer(), previewRef.current);
+                        sanitizeLinks(previewRef.current);
+                    }
                 } catch {
                     toastError('No se pudo mostrar la vista previa.');
                 }

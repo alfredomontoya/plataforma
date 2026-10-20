@@ -50,7 +50,14 @@ php artisan platform:entries-seed --from=2026-08-01 --to=2026-08-31 --force     
 php artisan platform:entries-seed --legacy --month=2026-08 --force               # modo original día×servicio
 ```
 
-Usuarios base: `admin`, `jefe`, `ing1-5`, `ent1-5` (clave `password`).
+Usuarios base: `admin`, `jefe`, `ing1-5`, `ent1-5`.
+
+> ⚠️ **Solo para desarrollo.** Los seeders generan datos demo y, sin
+> `--no-wipe`, borran todos los datos. En producción están **bloqueados**:
+> requieren `--force` explícito y `UsersSeeder` no crea las cuentas demo.
+> Nunca se siembran contraseñas por defecto en el servidor real: cree el
+> primer ADMIN con `php artisan platform:user` (o pídale a un ADMIN que lo
+> registre desde la interfaz con una contraseña propia).
 
 ## Tests y calidad
 

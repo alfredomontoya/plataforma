@@ -114,24 +114,149 @@ class BackupService
         if (! preg_match('#^([a-zA-Z]:[\\\\/]|/)#', $directory)) {
             $directory = base_path($directory);
         }
-        // Normalizar separadores (base_path puede mezclar / y \ en Windows)
-        $alt = DIRECTORY_SEPARATOR === '\\' ? '/' : '\\';
-        $directory = rtrim(str_replace($alt, DIRECTORY_SEPARATOR, $directory), DIRECTORY_SEPARATOR);
 
-        // Prohibido dentro de public/ (los .sql quedarían servibles por el web server)
-        $public = rtrim(str_replace($alt, DIRECTORY_SEPARATOR, base_path('public')), DIRECTORY_SEPARATOR);
-        if ($directory === $public || str_starts_with($directory, $public.DIRECTORY_SEPARATOR)) {
-            throw new InvalidArgumentException('El directorio no puede estar dentro de public/.');
+        $directory = $this->normalizePath($directory);
+
+        // Rechazo temprano de '..' (el SO podría resolverlo tras el chequeo)
+        if (preg_match('#(^|[\\\\/])\.\.([\\\\/]|$)#', $directory)) {
+            throw new InvalidArgumentException('El directorio no puede contener "..".');
         }
 
-        if (! is_dir($directory) && ! @mkdir($directory, 0755, true)) {
+        // Comprobar ANTES de crear: nunca debe quedar una carpeta dentro de
+        // public/ ni del proyecto aunque la validación posterior falle.
+        $this->assertDirectoryAllowed($directory);
+
+        if (! is_dir($directory) && ! @mkdir($directory, 0700, true)) {
             throw new InvalidArgumentException('No se pudo crear el directorio. Verifique la ruta y los permisos.');
         }
+
+        $this->assertDirectoryAllowed($directory);
+
         if (! is_writable($directory)) {
             throw new InvalidArgumentException('El directorio no tiene permisos de escritura.');
         }
 
         return $directory;
+    }
+
+    /**
+     * Comprueba, resolviendo symlinks y '..' con realpath(), que el directorio
+     * no sea el document root del web server ni esté dentro del proyecto.
+     * El prefijo textual no basta: /app/public/../config empieza por public/
+     * pero ES el directorio config/.
+     */
+    private function assertDirectoryAllowed(string $directory): void
+    {
+        $real = realpath($directory);
+        if ($real === false) {
+            // La carpeta aún no existe (se creará después): resolvemos el
+            // ancestro existente más cercano, que es quien fija la ubicación.
+            $ancestor = $directory;
+            while (($ancestor = dirname($ancestor)) !== '' && $ancestor !== dirname($ancestor)) {
+                if (is_dir($ancestor)) {
+                    break;
+                }
+            }
+            $real = realpath($ancestor);
+            if ($real === false) {
+                throw new InvalidArgumentException('No se pudo resolver el directorio indicado.');
+            }
+            $real = $this->normalizePath($real).DIRECTORY_SEPARATOR.basename($directory);
+        }
+        $real = $this->normalizePath($real);
+
+        $public = $this->normalizePath(base_path('public'));
+        $publicReal = realpath($public);
+        if ($publicReal !== false) {
+            $public = $this->normalizePath($publicReal);
+        }
+        if ($this->isSameOrInside($real, $public)) {
+            throw new InvalidArgumentException(
+                'El directorio no puede estar dentro de public/ (los .sql quedarían accesibles por HTTP).'
+            );
+        }
+
+        // Raíces de sistema: nunca escribir el volcado directamente ahí.
+        $this->assertNotSystemRoot($real);
+
+        // El volcado contiene toda la BD (hashes, tokens): nunca dentro del
+        // proyecto, salvo rutas temporales (tests/desarrollo), que son externas
+        // al árbol servido por el web server.
+        if ($this->isTemporaryPath($real)) {
+            return;
+        }
+
+        $project = $this->normalizePath(base_path());
+        $projectReal = realpath($project);
+        if ($projectReal !== false) {
+            $project = $this->normalizePath($projectReal);
+        }
+        if ($this->isSameOrInside($real, $project)) {
+            throw new InvalidArgumentException(
+                'El directorio no puede estar dentro del proyecto. Use una ruta externa (p. ej. otro disco o /var/backups).'
+            );
+        }
+    }
+
+    /** Raíces de sistema a las que nunca debe apuntar el directorio de copias. */
+    private function assertNotSystemRoot(string $real): void
+    {
+        foreach ($this->forbiddenRoots() as $root) {
+            $rootReal = realpath($root) ?: null;
+            if ($rootReal !== null && $this->isSameOrInside($real, $this->normalizePath($rootReal))) {
+                throw new InvalidArgumentException('Ruta del sistema no permitida para copias de seguridad.');
+            }
+        }
+    }
+
+    /**
+     * Directorios temporales del sistema (sys_get_temp_dir y sus hijos): se
+     * permiten como destino porque son externos al proyecto y no los sirve el
+     * web server; es lo que usan los tests.
+     */
+    private function isTemporaryPath(string $real): bool
+    {
+        $candidates = array_filter([
+            getenv('TEMP') ?: null,
+            getenv('TMP') ?: null,
+            sys_get_temp_dir(),
+        ]);
+
+        foreach ($candidates as $candidate) {
+            $tempReal = realpath($candidate);
+            if ($tempReal !== false && $this->isSameOrInside($real, $this->normalizePath($tempReal))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** true si $path es $base o cuelga de él (comparación con separador). */
+    private function isSameOrInside(string $path, string $base): bool
+    {
+        $path = rtrim($path, DIRECTORY_SEPARATOR);
+        $base = rtrim($base, DIRECTORY_SEPARATOR);
+
+        return $path === $base || str_starts_with($path, $base.DIRECTORY_SEPARATOR);
+    }
+
+    /** Raíces de sistema a las que nunca debe apuntar el directorio de copias. */
+    private function forbiddenRoots(): array
+    {
+        if (PHP_OS_FAMILY !== 'Windows') {
+            return ['/etc', '/usr', '/bin', '/sbin', '/boot', '/dev', '/proc', '/sys', '/var/www'];
+        }
+
+        $roots = [];
+        foreach (['WINDOWS', 'SystemRoot', 'ProgramFiles', 'ProgramFiles(x86)'] as $var) {
+            $value = getenv($var);
+            if (is_string($value) && $value !== '') {
+                $roots[] = $value;
+            }
+        }
+
+        return $roots;
     }
 
     // ------------------------------------------------------------------
@@ -142,17 +267,20 @@ class BackupService
     public function create(User $user): array
     {
         $dir = $this->directory();
-        if (! is_dir($dir) && ! @mkdir($dir, 0755, true)) {
+        if (! is_dir($dir) && ! @mkdir($dir, 0700, true)) {
             throw new RuntimeException('No se pudo crear el directorio de copias.');
         }
 
         $name = $this->uniqueName($dir);
-        $this->dumpDatabase($dir.DIRECTORY_SEPARATOR.$name);
+        $target = $dir.DIRECTORY_SEPARATOR.$name;
+        $this->dumpDatabase($target);
 
-        if (! file_exists($dir.DIRECTORY_SEPARATOR.$name) || filesize($dir.DIRECTORY_SEPARATOR.$name) === 0) {
-            @unlink($dir.DIRECTORY_SEPARATOR.$name);
+        if (! file_exists($target) || filesize($target) === 0) {
+            @unlink($target);
             throw new RuntimeException('El volcado quedó vacío. Verifique la conexión a la base de datos.');
         }
+
+        @chmod($target, 0600); // solo el usuario del web server debe poder leerlo
 
         $this->prune($dir);
         $this->logCreate($name, $user);
@@ -233,6 +361,8 @@ class BackupService
             throw new InvalidArgumentException('El archivo no parece un volcado válido de la base de datos.');
         }
 
+        $this->guardStatements($sql);
+
         $this->executeSql($sql);
         $this->logAppend(self::UPLOAD_KEY, 'restores', $user, 'upload');
     }
@@ -267,7 +397,8 @@ class BackupService
                 continue;
             }
             $full = $path.DIRECTORY_SEPARATOR.$item;
-            if (is_dir($full)) {
+            // No se listan symlinks: la escritura seguiría el enlace fuera del árbol.
+            if (is_dir($full) && ! is_link($full)) {
                 $directories[] = ['name' => $item, 'path' => $full];
             }
         }
@@ -294,6 +425,8 @@ class BackupService
         }
 
         $name = trim($name);
+        // Windows recorta puntos/espacios finales: "dir." == "dir" y ".. " == ".."
+        $name = rtrim($name, ". \t");
         if ($name === '' || $name === '.' || $name === '..'
             || ! preg_match('/^[^\\\\\/:*?"<>|]+$/u', $name)) {
             throw new InvalidArgumentException('Nombre de carpeta inválido.');
@@ -303,10 +436,10 @@ class BackupService
         }
 
         $full = $path.DIRECTORY_SEPARATOR.$name;
-        if (file_exists($full)) {
+        if (file_exists($full) || is_link($full)) {
             throw new InvalidArgumentException('Ya existe una carpeta con ese nombre.');
         }
-        if (! @mkdir($full)) {
+        if (! @mkdir($full, 0700)) {
             throw new RuntimeException('No se pudo crear la carpeta.');
         }
 
@@ -496,6 +629,62 @@ class BackupService
     private function looksLikeDump(string $sql): bool
     {
         return (bool) preg_match('/\b(CREATE\s+TABLE|INSERT\s+INTO|DROP\s+TABLE)\b/i', $sql);
+    }
+
+    /**
+     * Un .sql subido es código ejecutable con los privilegios de la app:
+     * solo se permiten sentencias de restauración. Rechaza DDL/DCL/peligrosas
+     * (GRANT, CREATE USER, INTO OUTFILE/DUMPFILE, LOAD_FILE/DATA, INSTALL,
+     * SET GLOBAL, shutdown, ...) y los comentarios condicionales /*! con
+     * contenido ejecutable, que MySQL sí ejecuta.
+     */
+    protected function guardStatements(string $sql): void
+    {
+        foreach ($this->splitStatements($sql) as $statement) {
+            if (! preg_match('/^\s*([a-zA-Z_]+)/', $statement, $m)) {
+                continue;
+            }
+            $verb = strtoupper($m[1]);
+
+            if (in_array($verb, ['GRANT', 'REVOKE', 'INSTALL', 'UNINSTALL'], true)) {
+                throw new InvalidArgumentException("Sentencia no permitida en una restauración: {$verb}.");
+            }
+            if (in_array($verb, ['SET', 'CHANGE', 'RESET', 'PURGE', 'KILL', 'SHUTDOWN'], true)) {
+                // Permitir solo SET de sesión/carga (charset, FK checks) que emite el dump.
+                if (in_array($verb, ['SET', 'CHANGE'], true) && preg_match(
+                    '/^\s*SET\s+(NAMES|CHARACTER_SET|FOREIGN_KEY_CHECKS|UNIQUE_CHECKS|SQL_MODE|TIMESTAMP|TIME_ZONE|AUTOCOMMIT|SESSION|@@)/i',
+                    $statement
+                )) {
+                    continue;
+                }
+                throw new InvalidArgumentException("Sentencia no permitida en una restauración: {$verb}.");
+            }
+
+            $isDangerous = [
+                '/\bCREATE\s+(OR\s+REPLACE\s+)?(USER|ROLE|FUNCTION|PROCEDURE|TRIGGER|EVENT|DATABASE|SCHEMA)\b/i',
+                '/\bALTER\s+(USER|INSTANCE)\b/i',
+                '/\bDROP\s+(USER|DATABASE|SCHEMA|PROCEDURE|FUNCTION|TRIGGER|EVENT)\b/i',
+                '/\bINTO\s+(OUTFILE|DUMPFILE)\b/i',
+                '/\bLOAD_FILE\s*\(/i',
+                '/\bLOAD\s+DATA\b/i',
+                '/\bSET\s+GLOBAL\b/i',
+                '/\bINTO\s+@/i',
+            ];
+            foreach ($isDangerous as $pattern) {
+                if (preg_match($pattern, $statement)) {
+                    throw new InvalidArgumentException(
+                        'El archivo contiene operaciones no permitidas (solo se admiten datos y tablas).'
+                    );
+                }
+            }
+
+            // /*! ... */ comentario condicional: MySQL lo ejecuta de verdad.
+            if (preg_match_all('#/\*!\d*\s*(.*?)\s*\*/#s', $statement, $cm)) {
+                throw new InvalidArgumentException(
+                    'El archivo contiene comentarios condicionales de MySQL no permitidos.'
+                );
+            }
+        }
     }
 
     /** Elimina las copias que superen el máximo configurado (las más antiguas) y su log. */

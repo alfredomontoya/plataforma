@@ -17,6 +17,12 @@ class UsersSeeder extends Seeder
 {
     public function run(): void
     {
+        if (! DatabaseSeeder::destructiveAllowed()) {
+            $this->command?->warn('UsersSeeder omitido: no se siembran usuarios demo en producción.');
+
+            return;
+        }
+
         $base = [
             ['admin', 'ADMIN', 'ING', 'Admin', 'Sistema'],
             ['jefe', 'JEFE', 'LIC', 'Jefe', 'Oficina'],

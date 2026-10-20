@@ -35,14 +35,32 @@ class SeedPlatform extends Command
         {--perUserMax= : filas máx. por usuario/día (modo per-user)}
         {--operators-only : solo OPERATOR_* en modo per-user (por defecto entran todos)}
         {--excludeJefe : excluye al JEFE en modo per-user (por defecto incluido; solo demo)}
-        {--seed= : semilla PRNG (defecto año*100+mes)}';
+        {--seed= : semilla PRNG (defecto año*100+mes)}
+        {--force : confirma el borrado masivo (obligatorio en producción)}';
 
     protected $description = 'Siembra la plataforma (wipe → roles → users → services → templates → entries → totals)';
 
     public function handle(): int
     {
+        $production = app()->environment('production');
+
+        // En producción solo funciona con --force explícito (evita borrados accidentales).
+        if ($production && ! $this->option('force')) {
+            $this->error('platform:seed está bloqueado en producción. Use --force si REALMENTE desea reiniciar los datos.');
+
+            return self::FAILURE;
+        }
+
+        if (! $this->option('no-wipe') && $this->input->isInteractive()
+            && ! $this->option('force')
+            && ! $this->confirm('Se borrarán TODOS los datos de la plataforma. ¿Continuar?', false)) {
+            $this->info('Cancelado.');
+
+            return self::SUCCESS;
+        }
+
         if (! $this->option('no-wipe')) {
-            DatabaseSeeder::wipe();
+            DatabaseSeeder::wipe($production);
             $this->info('Wipe OK.');
         }
 

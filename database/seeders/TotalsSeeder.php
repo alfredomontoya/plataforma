@@ -27,6 +27,12 @@ class TotalsSeeder extends Seeder
     {
         [$start, $end] = $this->bounds();
 
+        if (! DatabaseSeeder::destructiveAllowed()) {
+            $this->command?->warn('TotalsSeeder omitido: no se siembran datos demo en producción.');
+
+            return;
+        }
+
         $users = User::where('role', 'OPERATOR_INGRESO')->get();
         if ($users->isEmpty()) {
             $users = User::whereIn('username', ['ing1', 'ing2', 'ing3', 'ing4', 'ing5'])->get();

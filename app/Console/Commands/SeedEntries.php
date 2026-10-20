@@ -55,6 +55,12 @@ class SeedEntries extends Command
 
     public function handle(): int
     {
+        if (app()->environment('production') && ! $this->option('force')) {
+            $this->error('platform:entries-seed está bloqueado en producción (genera datos demo). Use --force para confirmar.');
+
+            return self::FAILURE;
+        }
+
         $legacy = (bool) $this->option('legacy');
         $total = (int) $this->option('total');
         if ($total > 0 && $legacy) {

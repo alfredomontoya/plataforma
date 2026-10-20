@@ -68,9 +68,11 @@ class ReportController extends Controller
         return ApiResponse::paginated($q->orderBy('created_at', 'desc')->paginate($limit));
     }
 
-    public function download(string $id)
+    public function download(Request $request, string $id)
     {
         $report = Report::findOrFail($id);
+        abort_unless($report->generatedById === $request->user()->id
+            || $request->user()->role === 'ADMIN', 403);
         if (! file_exists($report->filePath)) {
             return ApiResponse::error('Archivo no encontrado.', 404);
         }
@@ -79,9 +81,11 @@ class ReportController extends Controller
     }
 
     /** Vista exacta del informe guardado (PDF con membrete y pies). 501 si no hay conversor. */
-    public function pdf(string $id)
+    public function pdf(Request $request, string $id)
     {
         $report = Report::findOrFail($id);
+        abort_unless($report->generatedById === $request->user()->id
+            || $request->user()->role === 'ADMIN', 403);
         if (! file_exists($report->filePath)) {
             return ApiResponse::error('Archivo no encontrado.', 404);
         }
@@ -101,9 +105,11 @@ class ReportController extends Controller
         ]);
     }
 
-    public function destroy(string $id): JsonResponse
+    public function destroy(Request $request, string $id): JsonResponse
     {
         $report = Report::findOrFail($id);
+        abort_unless($report->generatedById === $request->user()->id
+            || $request->user()->role === 'ADMIN', 403);
         $path = $report->filePath;
         $report->delete();
         if ($path && file_exists($path)) {
@@ -114,10 +120,10 @@ class ReportController extends Controller
         return ApiResponse::ok(['message' => 'Informe eliminado.']);
     }
 
-    /** Binario de LibreOffice (env LIBREOFFICE_PATH o rutas comunes). Null si no existe. */
+    /** Binario de LibreOffice (config services.libreoffice.path o rutas comunes). Null si no existe. */
     private function sofficeBinary(): ?string
     {
-        $configured = (string) env('LIBREOFFICE_PATH', '');
+        $configured = (string) config('services.libreoffice.path', '');
         $candidates = array_filter([
             $configured ?: null,
             'C:\Program Files\LibreOffice\program\soffice.exe',
@@ -131,14 +137,28 @@ class ReportController extends Controller
                 return $bin;
             }
         }
-        $lookup = DIRECTORY_SEPARATOR === '\\' ? 'where soffice 2>NUL' : 'command -v soffice 2>/dev/null';
-        $found = trim((string) shell_exec($lookup));
+        // Sin shell_exec: se localiza por PATH con Illuminate Process.
+        $lookup = DIRECTORY_SEPARATOR === '\\'
+            ? Process::run(['where', 'soffice'])
+            : Process::run(['bash', '-lc', 'command -v soffice']);
+        $found = trim($lookup->output());
         $first = strtok($found, "\r\n");
         if (is_string($first) && $first !== '' && is_file($first)) {
             return $first;
         }
 
         return null;
+    }
+
+    /** Directorio temporal privado (0700) para conversiones (M9). */
+    private function tmpDir(): string
+    {
+        $dir = storage_path('app/private/tmp');
+        if (! is_dir($dir)) {
+            @mkdir($dir, 0700, true);
+        }
+
+        return $dir;
     }
 
     /** Convierte un .docx a PDF temporal con LibreOffice headless. Null si falla. */
@@ -148,17 +168,22 @@ class ReportController extends Controller
         if (! $bin || ! file_exists($docxPath)) {
             return null;
         }
-        $tmpDir = sys_get_temp_dir().'/pdfprev_'.uniqid();
-        @mkdir($tmpDir, 0777, true);
-        $result = Process::timeout(60)->run([$bin, '--headless', '--convert-to', 'pdf', '--outdir', $tmpDir, $docxPath]);
-        $pdf = $tmpDir.'/'.pathinfo($docxPath, PATHINFO_FILENAME).'.pdf';
-        if (! $result->successful() || ! file_exists($pdf)) {
-            return null;
-        }
-        $final = sys_get_temp_dir().'/pdfprev_'.uniqid().'.pdf';
-        @rename($pdf, $final);
-        @rmdir($tmpDir);
+        $tmpDir = $this->tmpDir().'/pdfprev_'.uniqid();
+        @mkdir($tmpDir, 0700, true);
+        $final = null;
+        try {
+            $result = Process::timeout(60)->run([$bin, '--headless', '--convert-to', 'pdf', '--outdir', $tmpDir, $docxPath]);
+            $pdf = $tmpDir.'/'.pathinfo($docxPath, PATHINFO_FILENAME).'.pdf';
+            if (! $result->successful() || ! file_exists($pdf)) {
+                return null;
+            }
+            $final = $this->tmpDir().'/pdfprev_'.uniqid().'.pdf';
+            @rename($pdf, $final);
 
-        return file_exists($final) ? $final : null;
+            return file_exists($final) ? $final : null;
+        } finally {
+            // El temp dir nunca queda huérfano, incluso si la conversión falla.
+            @rmdir($tmpDir);
+        }
     }
 }

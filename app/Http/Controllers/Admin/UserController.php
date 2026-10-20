@@ -35,9 +35,11 @@ class UserController extends Controller
             ->leftJoin('positions', 'positions.id', '=', 'users.activePositionId');
 
         if ($search = $request->query('search')) {
-            $q->where(fn ($w) => $w->where('users.username', 'like', "%{$search}%")
-                ->orWhere('users.firstName', 'like', "%{$search}%")
-                ->orWhere('users.lastName', 'like', "%{$search}%"));
+            // (Bajo/Medio) Escapa comodines LIKE (`%` `_` `\`) para búsqueda literal.
+            $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search).'%';
+            $q->where(fn ($w) => $w->where('users.username', 'like', $like)
+                ->orWhere('users.firstName', 'like', $like)
+                ->orWhere('users.lastName', 'like', $like));
         }
         if ($request->query('role')) {
             $q->where('users.role', $request->query('role'));
@@ -100,6 +102,9 @@ class UserController extends Controller
         $user = User::findOrFail($id);
         $temporary = Str::random(10);
         $user->update(['password' => $temporary]);
+
+        // (A8) El reseteo por ADMIN revoca TODOS los tokens del usuario reseteado.
+        $user->tokens()->delete();
 
         return ApiResponse::ok(['temporaryPassword' => $temporary]);
     }

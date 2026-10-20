@@ -83,6 +83,12 @@ class EntriesSeeder extends Seeder
 
     public function run(): void
     {
+        if (! DatabaseSeeder::destructiveAllowed()) {
+            $this->command?->warn('EntriesSeeder omitido: no se siembran entradas demo en producción.');
+
+            return;
+        }
+
         if ($this->clear) {
             Entry::query()->delete();
         }

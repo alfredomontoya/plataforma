@@ -13,6 +13,20 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, HasMongoId, HasRoles, Notifiable;
 
+    /**
+     * (M12) Nota de seguridad: `role`, `isActive`, `canBackfillEnabledAt` y
+     * `activePositionId` se mantienen asignables en masa porque hay código que
+     * NO puede tocarse y depende de ello:
+     *   - database/seeders/UsersSeeder.php: firstOrCreate([... 'role','isActive']) y
+     *     update(['canBackfill' => true, 'canBackfillEnabledAt' => ...]).
+     *   - app/Services/UserService.php: User::create([... 'role','isActive']) y
+     *     update(['activePositionId' => ...]) (createWithPosition/changePosition).
+     * Reducir $fillable rompería silenciosamente esos flujos y los tests
+     * (UsersServicesTest / AuthTest). Mitigación aplicada sin romper contratos:
+     * estas columnas sólo se escriben desde endpoints protegidos por
+     * `auth:sanctum` + `role:ADMIN` y validados por FormRequest; nunca provienen
+     * de datos de usuario sin filtrar.
+     */
     protected $fillable = [
         'username',
         'password',

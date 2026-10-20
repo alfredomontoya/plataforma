@@ -3,6 +3,19 @@
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
+/**
+ * (Bajo) Defensa en profundidad — decisión documentada:
+ * El frontend es una SPA que se autentica exclusivamente con un token Bearer
+ * guardado en localStorage (ver resources/js/lib/auth.jsx: lee/escribe
+ * `accessToken` y valida contra `GET /api/auth/me`). NO existe login por sesión
+ * web: `HandleInertiaRequests` no comparte usuario y no hay guard `web` activo
+ * en el flujo. Por tanto, proteger estas rutas con el middleware `auth` (sesión)
+ * redirigiría permanentemente a /login a los usuarios que solo tienen token,
+ * rompiendo la app. La protección real es: datos siempre vía API bajo
+ * `auth:sanctum` (+ `role:*`), y control de acceso en cliente con RoleGuard.
+ * Se documenta aquí en lugar de aplicar `auth` para no romper el login.
+ */
+
 Route::get('/login', fn () => Inertia::render('Login'));
 
 Route::get('/', fn () => redirect('/operador/entrada'));

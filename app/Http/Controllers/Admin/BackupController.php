@@ -42,7 +42,7 @@ class BackupController extends Controller
         } catch (\Throwable $e) {
             Log::error('Backup create failed', ['exception' => $e->getMessage()]);
 
-            return ApiResponse::error('No se pudo crear la copia: '.$e->getMessage(), 500);
+            return ApiResponse::error('No se pudo crear la copia de seguridad.', 500);
         }
     }
 
@@ -126,7 +126,7 @@ class BackupController extends Controller
         } catch (\Throwable $e) {
             Log::error('Backup restore failed', ['exception' => $e->getMessage()]);
 
-            return ApiResponse::error('No se pudo restaurar: '.$e->getMessage(), 500);
+            return ApiResponse::error('No se pudo restaurar la base de datos.', 500);
         }
     }
 
@@ -134,7 +134,10 @@ class BackupController extends Controller
     public function restoreUpload(Request $request, BackupService $backups): JsonResponse
     {
         $data = $request->validate([
-            'file' => 'required|file|max:102400', // 100 MB
+            'file' => [
+                'required', 'file', 'max:102400', // 100 MB
+                'mimetypes:text/plain,application/sql,application/octet-stream',
+            ],
         ]);
 
         try {
@@ -146,7 +149,7 @@ class BackupController extends Controller
         } catch (\Throwable $e) {
             Log::error('Backup upload restore failed', ['exception' => $e->getMessage()]);
 
-            return ApiResponse::error('No se pudo restaurar: '.$e->getMessage(), 500);
+            return ApiResponse::error('No se pudo restaurar la base de datos.', 500);
         }
     }
 }
