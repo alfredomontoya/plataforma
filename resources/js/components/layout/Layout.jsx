@@ -13,10 +13,12 @@ import {
     SunIcon,
     MoonIcon,
     ArrowRightOnRectangleIcon,
+    ServerStackIcon,
 } from '@heroicons/react/24/outline';
 import { useSidebarCollapsed, useTheme } from '../../hooks/useUi';
 import { useAuth } from '../../lib/auth';
 import { APP_NAME } from '../../lib/app';
+import EnvBadge from './EnvBadge';
 import VehicleDoodles from './VehicleDoodles';
 
 const ITEMS = [
@@ -24,6 +26,7 @@ const ITEMS = [
     { href: '/operador/total', label: 'Total diario', icon: TableCellsIcon, roles: ['OPERATOR_INGRESO', 'ADMIN'] },
     { href: '/admin/usuarios', label: 'Usuarios', icon: UsersIcon, roles: ['ADMIN'] },
     { href: '/admin/servicios', label: 'Servicios', icon: Cog6ToothIcon, roles: ['ADMIN'] },
+    { href: '/admin/backups', label: 'Copias de seguridad', icon: ServerStackIcon, roles: ['ADMIN'] },
     { href: '/jefe/dashboard', label: 'Dashboard', icon: ChartBarIcon, roles: ['JEFE', 'ADMIN'] },
     { href: '/jefe/reportes', label: 'Reportes', icon: DocumentPlusIcon, roles: ['JEFE', 'ADMIN'] },
     { href: '/jefe/plantillas', label: 'Plantillas', icon: DocumentDuplicateIcon, roles: ['JEFE', 'ADMIN'] },
@@ -109,6 +112,9 @@ function Sidebar() {
             })}
             </nav>
             <div className={`border-t border-stone-200 p-3 dark:border-white/10 ${collapsed ? 'text-center' : ''}`}>
+                <div className={`mb-2 ${collapsed ? 'flex justify-center' : ''}`}>
+                    <EnvBadge collapsed={collapsed} />
+                </div>
                 {collapsed ? (
                     <span className="text-[10px] text-stone-400" title={`${APP_NAME} © ${new Date().getFullYear()} · Todos los derechos reservados`}>©</span>
                 ) : (

@@ -12,6 +12,15 @@ class HandleInertiaRequests extends Middleware
 
     public function share(Request $request): array
     {
-        return array_merge(parent::share($request), []);
+        $connection = (string) config('database.default');
+
+        return array_merge(parent::share($request), [
+            // Entorno visible en sidebar, login y página de backups
+            'env' => [
+                'name' => app()->environment(),
+                'isProduction' => app()->environment('production'),
+                'db' => config("database.connections.{$connection}.database"),
+            ],
+        ]);
     }
 }

@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth';
 import { useTheme } from '../hooks/useUi';
 import { Button, Input, PasswordInput } from '../components/ui/controls';
 import { useToast } from '../components/ui/Toast';
+import EnvBadge from '../components/layout/EnvBadge';
 import { APP_NAME } from '../lib/app';
 
 export default function Login() {
@@ -80,6 +81,9 @@ export default function Login() {
                     Ingresar
                 </Button>
             </form>
+            <div className="mt-4">
+                <EnvBadge />
+            </div>
         </div>
     );
 }

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\BackupController;
 use App\Http\Controllers\Admin\ServiceController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Auth\AuthController;
@@ -65,6 +66,17 @@ Route::prefix('totals')->group(function () {
     Route::get('/summary/week', [TotalController::class, 'week'])->middleware(['auth:sanctum', 'role:ADMIN|JEFE']);
     Route::get('/summary/range', [TotalController::class, 'range'])->middleware(['auth:sanctum', 'role:ADMIN|JEFE']);
     Route::get('/summary/daily', [TotalController::class, 'daily'])->middleware(['auth:sanctum', 'role:ADMIN|JEFE']);
+});
+
+Route::prefix('backups')->middleware(['auth:sanctum', 'role:ADMIN'])->group(function () {
+    Route::get('/', [BackupController::class, 'index']);
+    Route::post('/', [BackupController::class, 'store']);
+    Route::post('/config', [BackupController::class, 'updateConfig']);
+    Route::get('/directories', [BackupController::class, 'directories']);
+    Route::post('/directories', [BackupController::class, 'createDirectory']);
+    Route::get('/download', [BackupController::class, 'download']);
+    Route::post('/restore', [BackupController::class, 'restore']);
+    Route::post('/restore-upload', [BackupController::class, 'restoreUpload']);
 });
 
 Route::prefix('templates')->middleware(['auth:sanctum', 'role:ADMIN|JEFE'])->group(function () {
