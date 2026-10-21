@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\User;
-use App\Services\UserService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -23,10 +22,7 @@ class TemplatesTest extends TestCase
 
     private function makeUser(string $username, string $role): User
     {
-        return app(UserService::class)->createWithPosition([
-            'username' => $username, 'password' => 'password', 'role' => $role,
-            'title' => 'LIC', 'firstName' => 'N', 'lastName' => 'U', 'position' => 'C', 'department' => 'D',
-        ]);
+        return $this->userFor($username, $role, [], ['nombre' => 'N', 'apellidos' => 'U']);
     }
 
     private function docx(array $lines): string
@@ -176,7 +172,7 @@ class TemplatesTest extends TestCase
         $tpl = $this->upload($jefe, $doc);
 
         $this->makeUser('ing1', 'OPERATOR_INGRESO');
-        $op = \App\Models\User::where('username', 'ing1')->first();
+        $op = User::where('username', 'ing1')->first();
         $this->actingAs($op, 'sanctum')->getJson("/api/templates/{$tpl['id']}/inspect")->assertForbidden();
         $this->actingAs($op, 'sanctum')->getJson("/api/templates/{$tpl['id']}/paragraphs")->assertForbidden();
         @unlink($doc);

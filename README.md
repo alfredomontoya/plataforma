@@ -37,7 +37,7 @@ composer dev       # serve + queue + logs + vite en paralelo
 ## Datos de prueba
 
 ```bash
-# Seed completo (wipe → roles → usuarios → servicios → plantillas → entradas)
+# Seed completo (wipe → roles → RRHH → usuarios → servicios → plantillas → entradas)
 php artisan platform:seed --force
 
 # Totales diarios demo (operadores de ingreso, mes actual → hoy):
@@ -50,7 +50,8 @@ php artisan platform:entries-seed --from=2026-08-01 --to=2026-08-31 --force     
 php artisan platform:entries-seed --legacy --month=2026-08 --force               # modo original día×servicio
 ```
 
-Usuarios base: `admin`, `jefe`, `ing1-5`, `ent1-5`.
+Usuarios base: una cuenta por empleado de RRHH. La cuenta ADMIN es `amontoya`
+(contraseña `4725253`); el resto usa `password`.
 
 > ⚠️ **Solo para desarrollo.** Los seeders generan datos demo y, sin
 > `--no-wipe`, borran todos los datos. En producción están **bloqueados**:

@@ -126,7 +126,7 @@ export const matchOperator = (supervisor, operators) => {
     let bestScore = 0;
     for (const o of operators) {
         const parts = new Set(
-            norm([o.firstName, o.lastName, o.paternalSurname, o.maternalSurname].filter(Boolean).join(' '))
+            norm(o.fullName || '')
                 .split(' ')
                 .filter((t) => t.length > 1)
         );

@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\User;
-use App\Services\UserService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
@@ -21,15 +20,9 @@ class AuthTest extends TestCase
 
     private function makeUser(string $username, string $role, string $password = 'password'): User
     {
-        return app(UserService::class)->createWithPosition([
-            'username' => $username,
-            'password' => $password,
-            'role' => $role,
-            'title' => 'LIC',
-            'firstName' => 'Test',
-            'lastName' => 'User',
-            'position' => 'Cargo Test',
-            'department' => 'Depto Test',
+        return $this->userFor($username, $role, ['password' => $password], [
+            'nombre' => 'Test',
+            'apellidos' => 'User',
         ]);
     }
 
@@ -79,11 +72,11 @@ class AuthTest extends TestCase
     {
         $admin = $this->makeUser('admin1', 'ADMIN');
         $op = $this->makeUser('ing1', 'OPERATOR_INGRESO');
+        $empleado = $this->empleadoDemo(['nombre' => 'Nuevo', 'apellidos' => 'Usuario']);
 
         $payload = [
-            'username' => 'nuevo1', 'password' => 'password', 'role' => 'JEFE',
-            'title' => 'LIC', 'firstName' => 'N', 'lastName' => 'U',
-            'position' => 'Cargo', 'department' => 'Depto',
+            'username' => 'nuevo1', 'password' => 'password', 'email' => 'nuevo1@test.local',
+            'role' => 'JEFE', 'empleadoId' => $empleado->id,
         ];
 
         $this->postJson('/api/auth/register', $payload)->assertStatus(401);
@@ -94,7 +87,8 @@ class AuthTest extends TestCase
         $res->assertCreated()->assertJson(['success' => true]);
 
         $created = User::where('username', 'nuevo1')->first();
-        $this->assertNotNull($created->activePositionId);
+        $this->assertSame('nuevo1@test.local', $created->email);
+        $this->assertSame($empleado->id, $created->empleadoId);
         $this->assertTrue($created->hasRole('JEFE'));
     }
 

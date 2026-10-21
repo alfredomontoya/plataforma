@@ -26,8 +26,11 @@ const periodLabel = (r) => {
 const generatorLabel = (r) => {
     const g = r?.generatedBy;
     if (!g) return '—';
-    const name = [g.firstName, g.lastName].filter(Boolean).join(' ');
-    return name ? `${name} (${g.username})` : g.username;
+    const empleado = g.empleado;
+    const tratamiento = empleado?.tratamiento?.abreviatura;
+    const nombre = [empleado?.nombre, empleado?.apellidos].filter(Boolean).join(' ');
+    const display = `${tratamiento ? `${tratamiento} ` : ''}${nombre}`.trim();
+    return display ? `${display} (${g.username})` : g.username;
 };
 
 export default function History() {

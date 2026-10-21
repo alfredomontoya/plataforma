@@ -14,29 +14,23 @@ use Illuminate\Support\Facades\DB;
 class UserService
 {
     /**
-     * Crea el usuario y asigna el rol Spatie. Si trae `empleadoId`, los
-     * nombres de la cuenta se copian desde el empleado (el empleado manda)
-     * y la auditoría registra al usuario autenticado como creador.
+     * Crea el usuario y asigna el rol Spatie. El vínculo al empleado es
+     * obligatorio; la ficha de RRHH es la única fuente de nombres.
+     * La auditoría registra al usuario autenticado como creador.
      */
     public function create(array $data, ?User $creator = null): User
     {
         return DB::transaction(function () use ($data, $creator) {
-            $empleado = isset($data['empleadoId'])
-                ? Empleado::findOrFail($data['empleadoId'])
-                : null;
+            $empleado = Empleado::findOrFail($data['empleadoId']);
 
             $user = User::create([
                 'username' => $data['username'],
                 'password' => $data['password'],
                 'email' => $data['email'] ?? null,
                 'role' => $data['role'],
-                'firstName' => $empleado?->nombre ?? $data['firstName'],
-                'lastName' => $empleado?->apellidos ?? $data['lastName'],
-                'paternalSurname' => $empleado ? null : ($data['paternalSurname'] ?? null),
-                'maternalSurname' => $empleado ? null : ($data['maternalSurname'] ?? null),
                 'isActive' => $data['isActive'] ?? true,
                 'canBackfill' => $data['canBackfill'] ?? false,
-                'empleadoId' => $empleado?->id,
+                'empleadoId' => $empleado->id,
                 'creadoPorUsuarioId' => $creator?->id,
             ]);
 

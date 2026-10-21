@@ -51,11 +51,17 @@ class TotalController extends Controller
     /** Operadores de ingreso para asociar el supervisor del parte pegado. */
     public function operators(): JsonResponse
     {
-        $rows = User::where('role', 'OPERATOR_INGRESO')->where('isActive', true)
+        $rows = User::with('empleado')
+            ->where('role', 'OPERATOR_INGRESO')->where('isActive', true)
             ->orderBy('username')
-            ->get(['id', 'username', 'firstName', 'lastName', 'paternalSurname', 'maternalSurname']);
+            ->get(['id', 'username', 'role', 'empleadoId']);
 
-        return ApiResponse::ok($rows);
+        return ApiResponse::ok($rows->map(fn (User $user) => [
+            'id' => $user->id,
+            'username' => $user->username,
+            'role' => $user->role,
+            'fullName' => $user->fullName,
+        ]));
     }
 
     /** Totales propios del operador autenticado en un día (precarga). */

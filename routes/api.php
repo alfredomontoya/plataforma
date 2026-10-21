@@ -1,6 +1,10 @@
 <?php
 
 use App\Http\Controllers\Admin\BackupController;
+use App\Http\Controllers\Admin\Rrhh\AreaController;
+use App\Http\Controllers\Admin\Rrhh\EmpleadoController;
+use App\Http\Controllers\Admin\Rrhh\PuestoController;
+use App\Http\Controllers\Admin\Rrhh\TratamientoController;
 use App\Http\Controllers\Admin\ServiceController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Auth\AuthController;
@@ -24,10 +28,47 @@ Route::prefix('auth')->group(function () {
 Route::prefix('users')->middleware(['auth:sanctum', 'role:ADMIN'])->group(function () {
     Route::get('/', [UserController::class, 'index']);
     Route::post('/', [UserController::class, 'store']);
+    // Debe declararse antes de /{id} para no interpretarse como un ID.
+    Route::get('/suggest-username', [UserController::class, 'suggestCredentials']);
     Route::get('/{id}', [UserController::class, 'show']);
     Route::patch('/{id}', [UserController::class, 'update']);
     Route::delete('/{id}', [UserController::class, 'destroy']);
     Route::post('/{id}/reset-password', [UserController::class, 'resetPassword']);
+});
+
+// RRHH: áreas, puestos, empleados y tratamientos.
+// Lectura para ADMIN/JEFE (reportes y filtros); escritura solo ADMIN.
+Route::prefix('rrhh')->middleware('auth:sanctum')->group(function () {
+    Route::middleware('role:ADMIN|JEFE')->group(function () {
+        Route::get('/tratamientos', [TratamientoController::class, 'index']);
+        Route::get('/areas', [AreaController::class, 'index']);
+        Route::get('/areas/{id}', [AreaController::class, 'show']);
+        Route::get('/puestos', [PuestoController::class, 'index']);
+        Route::get('/puestos/{id}', [PuestoController::class, 'show']);
+        Route::get('/empleados', [EmpleadoController::class, 'index']);
+        Route::get('/empleados/{id}', [EmpleadoController::class, 'show']);
+        Route::get('/empleados/{id}/historial', [EmpleadoController::class, 'historial']);
+    });
+
+    Route::middleware('role:ADMIN')->group(function () {
+        Route::post('/tratamientos', [TratamientoController::class, 'store']);
+        Route::patch('/tratamientos/{id}', [TratamientoController::class, 'update']);
+        Route::delete('/tratamientos/{id}', [TratamientoController::class, 'destroy']);
+
+        Route::post('/areas', [AreaController::class, 'store']);
+        Route::patch('/areas/{id}', [AreaController::class, 'update']);
+        Route::delete('/areas/{id}', [AreaController::class, 'destroy']);
+
+        Route::post('/puestos', [PuestoController::class, 'store']);
+        Route::patch('/puestos/{id}', [PuestoController::class, 'update']);
+        Route::delete('/puestos/{id}', [PuestoController::class, 'destroy']);
+
+        Route::post('/empleados', [EmpleadoController::class, 'store']);
+        Route::patch('/empleados/{id}', [EmpleadoController::class, 'update']);
+        Route::delete('/empleados/{id}', [EmpleadoController::class, 'destroy']);
+        Route::post('/empleados/{id}/puestos', [EmpleadoController::class, 'assignPuesto']);
+        Route::patch('/empleados/{id}/puestos/{asignacionId}', [EmpleadoController::class, 'closePuesto']);
+    });
 });
 
 Route::prefix('services')->group(function () {

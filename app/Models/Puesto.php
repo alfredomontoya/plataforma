@@ -10,7 +10,7 @@ class Puesto extends Model
     use HasMongoId;
 
     protected $fillable = [
-        'areaId', 'nombre', 'nivel', 'esSupervisor',
+        'areaId', 'nombre', 'sigla', 'nivel', 'esSupervisor',
     ];
 
     protected function casts(): array

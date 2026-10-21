@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use App\Services\BackupService;
-use App\Services\UserService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -49,10 +48,7 @@ class BackupsTest extends TestCase
 
     private function userWithRole(string $role): User
     {
-        return app(UserService::class)->createWithPosition([
-            'username' => strtolower($role).'_u', 'password' => 'password', 'role' => $role,
-            'title' => 'LIC', 'firstName' => 'A', 'lastName' => 'U', 'position' => 'C', 'department' => 'D',
-        ]);
+        return $this->userFor(strtolower($role).'_u', $role, [], ['nombre' => 'A', 'apellidos' => 'U']);
     }
 
     // ------------------------------------------------------------------
@@ -333,9 +329,7 @@ class BackupsTest extends TestCase
  */
 class FakeBackupService extends BackupService
 {
-    public function __construct(private readonly string $base)
-    {
-    }
+    public function __construct(private readonly string $base) {}
 
     protected function configPath(): string
     {

@@ -43,12 +43,15 @@ class ReportController extends Controller
     public function index(Request $request): JsonResponse
     {
         $limit = min(max((int) $request->query('limit', 10), 1), 100);
-        $q = Report::with(['template', 'generatedBy']);
+        $q = Report::with(['template', 'generatedBy.empleado.tratamiento']);
 
         if ($search = $request->query('search')) {
             $q->where(fn ($w) => $w->where('nroCI', 'like', "%{$search}%")
                 ->orWhere('dirigidoA', 'like', "%{$search}%")
-                ->orWhere('fileName', 'like', "%{$search}%"));
+                ->orWhere('fileName', 'like', "%{$search}%")
+                ->orWhereHas('generatedBy.empleado', fn ($e) => $e
+                    ->where('empleados.nombre', 'like', "%{$search}%")
+                    ->orWhere('empleados.apellidos', 'like', "%{$search}%")));
         }
         // Filtros por día calendario Bolivia (UTC-4) sobre createdAt
         foreach (['from', 'to', 'date'] as $f) {

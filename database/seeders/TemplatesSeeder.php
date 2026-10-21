@@ -22,7 +22,7 @@ class TemplatesSeeder extends Seeder
         $assets = base_path('assets/templates/plantilla-sistema.docx');
 
         Storage::makeDirectory(TemplateService::DIR);
-        $dest = Storage::path(TemplateService::DIR . '/default.docx');
+        $dest = Storage::path(TemplateService::DIR.'/default.docx');
         if (file_exists($assets)) {
             copy($assets, $dest);
         } else {
@@ -30,7 +30,7 @@ class TemplatesSeeder extends Seeder
             app(TemplateService::class)->buildBaseFile($dest);
         }
 
-        $admin = User::where('username', 'admin')->first() ?? User::firstOrFail();
+        $admin = User::where('role', 'ADMIN')->where('isActive', true)->first() ?? User::firstOrFail();
 
         Template::create([
             'name' => 'Plantilla del Sistema',

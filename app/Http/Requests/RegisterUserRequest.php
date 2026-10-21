@@ -19,13 +19,8 @@ class RegisterUserRequest extends FormRequest
             'password' => ['required', 'string', 'min:6', 'max:100'],
             'email' => ['required', 'email', 'max:191', Rule::unique('users', 'email')],
             'role' => ['required', Rule::in(['ADMIN', 'OPERATOR_INGRESO', 'OPERATOR_ENTREGA', 'JEFE'])],
-            // Si hay empleado vinculado los nombres se copian de la ficha de
-            // RRHH; sin empleado, los nombres de la cuenta son obligatorios.
-            'firstName' => ['required_without:empleadoId', 'nullable', 'string', 'max:100'],
-            'lastName' => ['required_without:empleadoId', 'nullable', 'string', 'max:100'],
-            'paternalSurname' => ['nullable', 'string', 'max:100'],
-            'maternalSurname' => ['nullable', 'string', 'max:100'],
-            'empleadoId' => ['nullable', 'string', 'exists:empleados,id', Rule::unique('users', 'empleadoId')],
+            // Toda cuenta depende de una ficha de RRHH (vínculo 1:1).
+            'empleadoId' => ['required', 'string', 'exists:empleados,id', Rule::unique('users', 'empleadoId')],
             'isActive' => ['sometimes', 'boolean'],
             'canBackfill' => ['sometimes', 'boolean'],
         ];
@@ -46,8 +41,7 @@ class RegisterUserRequest extends FormRequest
             'email.unique' => 'El correo ya está registrado.',
             'role.required' => 'El rol es obligatorio.',
             'role.in' => 'Rol inválido.',
-            'firstName.required_without' => 'El nombre es obligatorio (o vincule un empleado).',
-            'lastName.required_without' => 'El apellido es obligatorio (o vincule un empleado).',
+            'empleadoId.required' => 'El empleado es obligatorio.',
             'empleadoId.exists' => 'El empleado seleccionado no existe.',
             'empleadoId.unique' => 'Ese empleado ya tiene una cuenta de usuario.',
         ];

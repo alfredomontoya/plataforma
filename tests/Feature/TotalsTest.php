@@ -2,10 +2,9 @@
 
 namespace Tests\Feature;
 
-use App\Models\DailyTotal;
+use App\Models\Entry;
 use App\Models\Service;
 use App\Models\User;
-use App\Services\UserService;
 use Carbon\Carbon;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -23,10 +22,7 @@ class TotalsTest extends TestCase
 
     private function makeUser(string $username, string $role): User
     {
-        return app(UserService::class)->createWithPosition([
-            'username' => $username, 'password' => 'password', 'role' => $role,
-            'title' => 'LIC', 'firstName' => 'N', 'lastName' => 'U', 'position' => 'C', 'department' => 'D',
-        ]);
+        return $this->userFor($username, $role, [], ['nombre' => 'N', 'apellidos' => 'U']);
     }
 
     private function makeService(string $name, int $sort = 0): Service
@@ -41,10 +37,11 @@ class TotalsTest extends TestCase
         $op ??= User::where('username', 'ing1')->first() ?? $this->makeUser('ing1', 'OPERATOR_INGRESO');
         foreach ($qtyByName as $name => $qty) {
             $service = Service::where('name', $name)->firstOrFail();
-            DailyTotal::create([
+            Entry::create([
                 'userId' => $op->id,
                 'serviceId' => $service->id,
                 'date' => Carbon::parse($day, 'UTC'),
+                'type' => Service::TYPE_INGRESO,
                 'quantity' => $qty,
             ]);
         }
@@ -71,7 +68,7 @@ class TotalsTest extends TestCase
         // Reenvío pisa (upsert usuario×servicio×día).
         $payload['items'][0]['quantity'] = 231;
         $auth()->postJson('/api/totals', $payload)->assertCreated();
-        $this->assertDatabaseCount('daily_totals', 2);
+        $this->assertDatabaseCount('entries', 2);
 
         $me = $auth()->getJson("/api/totals/me?date={$today}")->assertOk();
         $this->assertCount(2, $me->json('data'));

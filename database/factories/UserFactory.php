@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\Empleado;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
@@ -19,12 +20,11 @@ class UserFactory extends Factory
         return [
             'username' => fake()->unique()->userName(),
             'password' => static::$password ??= Hash::make('password'),
+            'email' => fake()->unique()->safeEmail(),
             'role' => 'OPERATOR_INGRESO',
-            'title' => 'NONE',
-            'firstName' => fake()->firstName(),
-            'lastName' => fake()->lastName(),
             'isActive' => true,
             'canBackfill' => false,
+            'empleadoId' => Empleado::factory(),
             'remember_token' => Str::random(10),
         ];
     }

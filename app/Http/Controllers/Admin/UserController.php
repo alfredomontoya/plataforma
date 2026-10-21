@@ -7,6 +7,7 @@ use App\Http\Requests\RegisterUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 use App\Models\Empleado;
 use App\Models\User;
+use App\Services\UserCredentialService;
 use App\Services\UserService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -20,8 +21,8 @@ use Illuminate\Support\Str;
 class UserController extends Controller
 {
     private const SORTS = [
-        'username' => 'users.username', 'firstName' => 'users.firstName',
-        'role' => 'users.role',
+        'username' => 'users.username',
+        'email' => 'users.email', 'role' => 'users.role',
         'isActive' => 'users.isActive', 'createdAt' => 'users.created_at',
     ];
 
@@ -31,14 +32,16 @@ class UserController extends Controller
         $sortOrder = strtolower((string) $request->query('sortOrder', 'desc')) === 'asc' ? 'asc' : 'desc';
         $limit = min(max((int) $request->query('limit', 20), 1), 100);
 
-        $q = User::query()->with(['empleado.puestoActual.puesto', 'empleado.tratamiento']);
+        $q = User::query()->with(['empleado.puestoActual.puesto.area', 'empleado.tratamiento']);
 
         if ($search = $request->query('search')) {
             // (Bajo/Medio) Escapa comodines LIKE (`%` `_` `\`) para búsqueda literal.
             $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search).'%';
             $q->where(fn ($w) => $w->where('users.username', 'like', $like)
-                ->orWhere('users.firstName', 'like', $like)
-                ->orWhere('users.lastName', 'like', $like));
+                ->orWhere('users.email', 'like', $like)
+                ->orWhereHas('empleado', fn ($e) => $e
+                    ->where('empleados.nombre', 'like', $like)
+                    ->orWhere('empleados.apellidos', 'like', $like)));
         }
         if ($request->query('role')) {
             $q->where('users.role', $request->query('role'));
@@ -52,10 +55,28 @@ class UserController extends Controller
         return ApiResponse::paginated($q->paginate($limit));
     }
 
+    /**
+     * Sugerencia de usuario/correo para un empleado sin cuenta.
+     * La comprobación de duplicados se hace contra username y email.
+     */
+    public function suggestCredentials(Request $request, UserCredentialService $credentials): JsonResponse
+    {
+        $data = $request->validate([
+            'empleadoId' => ['required', 'string', 'exists:empleados,id'],
+        ]);
+
+        $empleado = Empleado::with('usuario')->findOrFail($data['empleadoId']);
+
+        abort_if($empleado->estado !== Empleado::ESTADO_ACTIVO, 400, 'No se puede crear un usuario para un empleado inactivo.');
+        abort_if($empleado->usuario !== null, 409, 'El empleado ya tiene una cuenta de usuario.');
+
+        return ApiResponse::ok($credentials->suggestFor($empleado));
+    }
+
     public function show(string $id): JsonResponse
     {
         return ApiResponse::ok(User::with([
-            'empleado.puestoActual.puesto', 'empleado.tratamiento', 'roles',
+            'empleado.puestoActual.puesto.area', 'empleado.tratamiento', 'roles',
         ])->findOrFail($id));
     }
 
@@ -79,19 +100,9 @@ class UserController extends Controller
             $data['canBackfillEnabledAt'] = now('UTC')->toDateString();
         }
 
-        // Vinculación a empleado: los nombres de la cuenta se copian de la
-        // ficha de RRHH (el empleado manda sobre los nombres propios).
-        if (array_key_exists('empleadoId', $data) && $data['empleadoId']) {
-            $empleado = Empleado::findOrFail($data['empleadoId']);
-            $data['firstName'] = $empleado->nombre;
-            $data['lastName'] = $empleado->apellidos;
-            $data['paternalSurname'] = null;
-            $data['maternalSurname'] = null;
-        }
-
         $user->update($data);
 
-        return ApiResponse::ok($user->fresh(['empleado.puestoActual.puesto', 'empleado.tratamiento', 'roles']));
+        return ApiResponse::ok($user->fresh(['empleado.puestoActual.puesto.area', 'empleado.tratamiento', 'roles']));
     }
 
     public function destroy(string $id): JsonResponse

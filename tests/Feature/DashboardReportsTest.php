@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Models\Entry;
 use App\Models\Service;
 use App\Models\User;
-use App\Services\UserService;
 use Carbon\Carbon;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -27,15 +26,9 @@ class DashboardReportsTest extends TestCase
     private function seedDay(string $day, int $ingQty, int $entQty): void
     {
         $opI = User::where('username', 'ing1')->first()
-            ?? app(UserService::class)->createWithPosition([
-                'username' => 'ing1', 'password' => 'password', 'role' => 'OPERATOR_INGRESO',
-                'title' => 'LIC', 'firstName' => 'I', 'lastName' => 'U', 'position' => 'C', 'department' => 'D',
-            ]);
+            ?? $this->userFor('ing1', 'OPERATOR_INGRESO', [], ['nombre' => 'Ing', 'apellidos' => 'Uno']);
         $opE = User::where('username', 'ent1')->first()
-            ?? app(UserService::class)->createWithPosition([
-                'username' => 'ent1', 'password' => 'password', 'role' => 'OPERATOR_ENTREGA',
-                'title' => 'LIC', 'firstName' => 'E', 'lastName' => 'U', 'position' => 'C', 'department' => 'D',
-            ]);
+            ?? $this->userFor('ent1', 'OPERATOR_ENTREGA', [], ['nombre' => 'Ent', 'apellidos' => 'Uno']);
         $ing = Service::firstOrCreate(['name' => 'SERV ING'], ['abreviation' => 'SI', 'type' => 'INGRESO', 'isActive' => true, 'sortOrder' => 1]);
         $ent = Service::firstOrCreate(['name' => 'SERV ENT'], ['abreviation' => 'SE', 'type' => 'ENTREGA', 'isActive' => true, 'sortOrder' => 1]);
 
@@ -43,12 +36,10 @@ class DashboardReportsTest extends TestCase
         Entry::create(['userId' => $opE->id, 'serviceId' => $ent->id, 'date' => Carbon::parse($day, 'UTC'), 'type' => 'ENTREGA', 'quantity' => $entQty]);
     }
 
-    private function jefe()
+    private function jefe(): User
     {
-        return app(UserService::class)->createWithPosition([
-            'username' => 'jefe1', 'password' => 'password', 'role' => 'JEFE',
-            'title' => 'LIC', 'firstName' => 'J', 'lastName' => 'U', 'position' => 'C', 'department' => 'D',
-        ]);
+        return User::where('username', 'jefe1')->first()
+            ?? $this->userFor('jefe1', 'JEFE', [], ['nombre' => 'Jefe', 'apellidos' => 'Uno']);
     }
 
     public function test_dashboard_day_con_previo_y_trend(): void

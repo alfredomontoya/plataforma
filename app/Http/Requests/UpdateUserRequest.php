@@ -20,14 +20,8 @@ class UpdateUserRequest extends FormRequest
                 'sometimes', 'nullable', 'email', 'max:191',
                 Rule::unique('users', 'email')->ignore($this->route('id')),
             ],
-            'firstName' => ['required_without:empleadoId', 'nullable', 'string', 'max:100'],
-            'lastName' => ['required_without:empleadoId', 'nullable', 'string', 'max:100'],
-            'paternalSurname' => ['nullable', 'string', 'max:100'],
-            'maternalSurname' => ['nullable', 'string', 'max:100'],
-            'empleadoId' => [
-                'nullable', 'string', 'exists:empleados,id',
-                Rule::unique('users', 'empleadoId')->ignore($this->route('id')),
-            ],
+            // PATCH parcial: si no se envían, se conservan los actuales.
+            // El empleado vinculado es inmutable: se define al crear la cuenta.
             'isActive' => ['sometimes', 'boolean'],
             'canBackfill' => ['sometimes', 'boolean'],
         ];
@@ -39,10 +33,6 @@ class UpdateUserRequest extends FormRequest
             'role.in' => 'Rol inválido.',
             'email.email' => 'El correo no tiene un formato válido.',
             'email.unique' => 'El correo ya está registrado.',
-            'firstName.required_without' => 'El nombre es obligatorio (o vincule un empleado).',
-            'lastName.required_without' => 'El apellido es obligatorio (o vincule un empleado).',
-            'empleadoId.exists' => 'El empleado seleccionado no existe.',
-            'empleadoId.unique' => 'Ese empleado ya tiene una cuenta de usuario.',
         ];
     }
 }

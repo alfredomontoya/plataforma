@@ -2,12 +2,16 @@
 
 namespace App\Console\Commands;
 
+use Database\Seeders\AreaSeeder;
 use Database\Seeders\DatabaseSeeder;
+use Database\Seeders\EmpleadoPvehSeeder;
 use Database\Seeders\EntriesSeeder;
+use Database\Seeders\PuestoPvehSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Database\Seeders\ServicesSeeder;
 use Database\Seeders\TemplatesSeeder;
 use Database\Seeders\TotalsSeeder;
+use Database\Seeders\TratamientoSeeder;
 use Database\Seeders\UsersSeeder;
 use Illuminate\Console\Command;
 
@@ -38,7 +42,7 @@ class SeedPlatform extends Command
         {--seed= : semilla PRNG (defecto año*100+mes)}
         {--force : confirma el borrado masivo (obligatorio en producción)}';
 
-    protected $description = 'Siembra la plataforma (wipe → roles → users → services → templates → entries → totals)';
+    protected $description = 'Siembra la plataforma (wipe → roles → RRHH → users → services → templates → entries → totals)';
 
     public function handle(): int
     {
@@ -65,16 +69,20 @@ class SeedPlatform extends Command
         }
 
         if (! $this->option('skip-roles')) {
-            (new RolesAndPermissionsSeeder())->run();
+            (new RolesAndPermissionsSeeder)->run();
         }
+        (new AreaSeeder)->run();
+        (new PuestoPvehSeeder)->run();
+        (new TratamientoSeeder)->run();
+        (new EmpleadoPvehSeeder)->run();
         if (! $this->option('skip-users')) {
-            (new UsersSeeder())->run();
+            (new UsersSeeder)->run();
         }
         if (! $this->option('skip-services')) {
-            (new ServicesSeeder())->run();
+            (new ServicesSeeder)->run();
         }
         if (! $this->option('skip-templates')) {
-            (new TemplatesSeeder())->run();
+            (new TemplatesSeeder)->run();
         }
         if (! $this->option('skip-entries')) {
             $perUserMin = $this->option('perUserMin') !== null ? (int) $this->option('perUserMin') : null;
@@ -99,6 +107,7 @@ class SeedPlatform extends Command
         }
 
         $this->info('Seed OK.');
+
         return self::SUCCESS;
     }
 }

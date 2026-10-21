@@ -17,8 +17,8 @@ class User extends Authenticatable
      * (M12) Nota de seguridad: `isActive`, `canBackfillEnabledAt` y
      * `empleadoId` se mantienen asignables en masa porque hay código que
      * NO puede tocarse y depende de ello:
-     *   - database/seeders/UsersSeeder.php: firstOrCreate([... 'role','isActive']) y
-     *     update(['canBackfill' => true, 'canBackfillEnabledAt' => ...]).
+     *   - database/seeders/UsersSeeder.php: crea/actualiza cuentas vinculadas
+     *     a empleados y ajusta `canBackfill` del ADMIN.
      *   - app/Services/UserService.php: User::create([... 'role','isActive']).
      * Reducir $fillable rompería silenciosamente esos flujos y los tests
      * (UsersServicesTest / AuthTest). Mitigación aplicada sin romper contratos:
@@ -31,10 +31,6 @@ class User extends Authenticatable
         'password',
         'email',
         'role',
-        'firstName',
-        'lastName',
-        'paternalSurname',
-        'maternalSurname',
         'isActive',
         'canBackfill',
         'canBackfillEnabledAt',
@@ -69,7 +65,7 @@ class User extends Authenticatable
         return $this->hasMany(Report::class, 'generatedById');
     }
 
-    /** Empleado de RRHH vinculado (1:1 opcional). */
+    /** Empleado de RRHH vinculado (1:1 obligatorio). */
     public function empleado()
     {
         return $this->belongsTo(Empleado::class, 'empleadoId');
@@ -95,26 +91,24 @@ class User extends Authenticatable
 
     public function getFullNameAttribute(): string
     {
-        return trim("{$this->firstName} {$this->lastName} {$this->paternalSurname} {$this->maternalSurname}");
+        $nombre = trim("{$this->empleado?->nombre} {$this->empleado?->apellidos}");
+
+        return $nombre !== '' ? $nombre : $this->username;
     }
 
     /**
-     * Nombre para display: prioriza el empleado de RRHH (con tratamiento
-     * académico) y cae a los nombres de la cuenta cuando no hay vínculo.
+     * Nombre para display: empleado de RRHH con tratamiento académico.
      */
     public function getDisplayNameAttribute(): string
     {
         $empleado = $this->empleado;
 
-        if ($empleado) {
-            $nombre = trim("{$empleado->nombre} {$empleado->apellidos}");
-            $nombre = trim("{$empleado->tratamiento?->abreviatura} {$nombre}");
-
-            if ($nombre !== '') {
-                return $nombre;
-            }
+        if (! $empleado) {
+            return $this->username;
         }
 
-        return $this->fullName;
+        $nombre = trim("{$empleado->tratamiento?->abreviatura} {$empleado->nombre} {$empleado->apellidos}");
+
+        return $nombre !== '' ? $nombre : $this->username;
     }
 }

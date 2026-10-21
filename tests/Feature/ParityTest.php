@@ -4,10 +4,13 @@ namespace Tests\Feature;
 
 use App\Models\Entry;
 use App\Models\Service;
-use App\Services\UserService;
+use App\Models\User;
 use Carbon\Carbon;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use PhpOffice\PhpWord\PhpWord;
+use PhpOffice\PhpWord\Writer\Word2007;
 use Tests\TestCase;
 
 class ParityTest extends TestCase
@@ -20,17 +23,15 @@ class ParityTest extends TestCase
         $this->seed(RolesAndPermissionsSeeder::class);
     }
 
-    private function jefe()
+    private function jefe(): User
     {
-        return app(UserService::class)->createWithPosition([
-            'username' => 'jefe1', 'password' => 'password', 'role' => 'JEFE',
-            'title' => 'LIC', 'firstName' => 'J', 'lastName' => 'U', 'position' => 'C', 'department' => 'D',
-        ]);
+        return User::where('username', 'jefe1')->first()
+            ?? $this->userFor('jefe1', 'JEFE', [], ['nombre' => 'J', 'apellidos' => 'U']);
     }
 
     public function test_rutas_web_renderizan(): void
     {
-        foreach (['/login', '/operador/entrada', '/admin/usuarios', '/admin/servicios',
+        foreach (['/login', '/operador/entrada', '/admin/usuarios', '/admin/rrhh', '/admin/servicios',
             '/jefe/dashboard', '/jefe/reportes', '/jefe/reportes/historial'] as $uri) {
             $this->get($uri)->assertOk();
         }
@@ -64,7 +65,7 @@ class ParityTest extends TestCase
 
         // Plantilla explícita estilo anterior (el default actual es de totales).
         $path = tempnam(sys_get_temp_dir(), 'tpl').'.docx';
-        $pw = new \PhpOffice\PhpWord\PhpWord;
+        $pw = new PhpWord;
         $section = $pw->addSection();
         $section->addText('Informe ${NRO_CI} para ${DIRIGIDO_A}');
         $table = $section->addTable();
@@ -78,10 +79,10 @@ class ParityTest extends TestCase
         $section->addText('${GRAFICO_INGRESO}');
         $section->addText('${GRAFICO_ENTREGA}');
         $section->addText('${GRAFICO_TENDENCIA}');
-        (new \PhpOffice\PhpWord\Writer\Word2007($pw))->save($path);
+        (new Word2007($pw))->save($path);
         $templateId = $this->actingAs($jefe, 'sanctum')->post('/api/templates', [
             'name' => 'Vieja',
-            'file' => new \Illuminate\Http\UploadedFile($path, 'vieja.docx',
+            'file' => new UploadedFile($path, 'vieja.docx',
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', null, true),
         ])->assertCreated()->json('data.id');
 

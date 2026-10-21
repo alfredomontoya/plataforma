@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\Service;
-use App\Services\UserService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -13,6 +12,7 @@ class EntriesTest extends TestCase
     use RefreshDatabase;
 
     private string $ingId;
+
     private string $entId;
 
     protected function setUp(): void
@@ -31,11 +31,7 @@ class EntriesTest extends TestCase
 
     private function makeUser(string $username, string $role, array $extra = [])
     {
-        return app(UserService::class)->createWithPosition(array_merge([
-            'username' => $username, 'password' => 'password', 'role' => $role,
-            'title' => 'LIC', 'firstName' => 'T', 'lastName' => 'U',
-            'position' => 'C', 'department' => 'D',
-        ], $extra));
+        return $this->userFor($username, $role, $extra, ['nombre' => 'T', 'apellidos' => 'U']);
     }
 
     public function test_operador_registra_hoy_en_lote(): void

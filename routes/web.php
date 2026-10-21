@@ -22,6 +22,7 @@ Route::get('/', fn () => redirect('/operador/entrada'));
 Route::get('/operador/entrada', fn () => Inertia::render('Entry'));
 Route::get('/operador/total', fn () => Inertia::render('TotalEntry'));
 Route::get('/admin/usuarios', fn () => Inertia::render('Users'));
+Route::get('/admin/rrhh', fn () => Inertia::render('RRHH'));
 Route::get('/admin/servicios', fn () => Inertia::render('Services'));
 Route::get('/admin/backups', fn () => Inertia::render('Backups'));
 Route::get('/jefe/dashboard', fn () => Inertia::render('Dashboard'));

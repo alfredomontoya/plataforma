@@ -2,11 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Models\DailyTotal;
+use App\Models\Entry;
 use App\Models\Service;
 use App\Models\User;
 use App\Services\TemplateInspector;
-use App\Services\UserService;
 use Carbon\Carbon;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -27,10 +26,7 @@ class TotalsReportTest extends TestCase
 
     private function makeUser(string $username, string $role): User
     {
-        return app(UserService::class)->createWithPosition([
-            'username' => $username, 'password' => 'password', 'role' => $role,
-            'title' => 'LIC', 'firstName' => 'N', 'lastName' => 'U', 'position' => 'C', 'department' => 'D',
-        ]);
+        return $this->userFor($username, $role, [], ['nombre' => 'N', 'apellidos' => 'U']);
     }
 
     private function seedWeekTotals(): string
@@ -42,8 +38,8 @@ class TotalsReportTest extends TestCase
         $cursor = $monday->copy();
         $today = Carbon::now('UTC')->startOfDay();
         while ($cursor->lte($today)) {
-            DailyTotal::create(['userId' => $op->id, 'serviceId' => $s1->id, 'date' => $cursor->copy(), 'quantity' => 10]);
-            DailyTotal::create(['userId' => $op->id, 'serviceId' => $s2->id, 'date' => $cursor->copy(), 'quantity' => 5]);
+            Entry::create(['userId' => $op->id, 'serviceId' => $s1->id, 'date' => $cursor->copy(), 'type' => Service::TYPE_INGRESO, 'quantity' => 10]);
+            Entry::create(['userId' => $op->id, 'serviceId' => $s2->id, 'date' => $cursor->copy(), 'type' => Service::TYPE_INGRESO, 'quantity' => 5]);
             $cursor->addDay();
         }
 

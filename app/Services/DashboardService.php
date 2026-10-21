@@ -153,14 +153,15 @@ class DashboardService
     {
         $rows = Entry::query()
             ->join('users', 'users.id', '=', 'entries.userId')
+            ->join('empleados', 'empleados.id', '=', 'users.empleadoId')
             ->where('entries.date', '>=', $start)
             ->where('entries.date', '<', $end)
-            ->groupBy('entries.userId', 'users.username', 'users.firstName', 'users.lastName',
-                'users.paternalSurname', 'users.maternalSurname', 'users.role')
+            ->groupBy('entries.userId', 'users.username', 'empleados.nombre', 'empleados.apellidos',
+                'users.role')
             ->orderByDesc(DB::raw('SUM(entries.quantity)'))
             ->get([
-                'entries.userId as userId', 'users.username', 'users.firstName', 'users.lastName',
-                'users.paternalSurname', 'users.maternalSurname', 'users.role',
+                'entries.userId as userId', 'users.username', 'empleados.nombre as nombre',
+                'empleados.apellidos as apellidos', 'users.role',
                 DB::raw("SUM(CASE WHEN entries.type = 'INGRESO' THEN entries.quantity ELSE 0 END) as ingreso"),
                 DB::raw("SUM(CASE WHEN entries.type = 'ENTREGA' THEN entries.quantity ELSE 0 END) as entrega"),
                 DB::raw('SUM(entries.quantity) as total'),
@@ -169,7 +170,7 @@ class DashboardService
         $out = $rows->map(fn ($r) => [
             'userId' => $r->userId,
             'username' => $r->username,
-            'fullName' => trim("{$r->firstName} {$r->lastName} {$r->paternalSurname} {$r->maternalSurname}"),
+            'fullName' => trim("{$r->nombre} {$r->apellidos}"),
             'role' => $r->role,
             'ingreso' => (int) $r->ingreso,
             'entrega' => (int) $r->entrega,

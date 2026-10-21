@@ -3,13 +3,15 @@
 namespace App\Models;
 
 use App\Models\Concerns\HasMongoId;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Empleado extends Model
 {
-    use HasMongoId;
+    use HasFactory, HasMongoId;
 
     public const ESTADO_ACTIVO = 'activo';
+
     public const ESTADO_INACTIVO = 'inactivo';
 
     protected $fillable = [
@@ -43,7 +45,7 @@ class Empleado extends Model
         return $this->hasMany(EmpleadoPuesto::class, 'empleadoId');
     }
 
-    /** Cuenta de sistema vinculada (1:1, opcional). */
+    /** Cuenta de sistema vinculada (1:1 obligatoria). */
     public function usuario()
     {
         return $this->hasOne(User::class, 'empleadoId');
