@@ -2,7 +2,7 @@
 
 namespace Database\Seeders;
 
-use App\Models\DailyTotal;
+use App\Models\Entry;
 use App\Models\Service;
 use App\Models\User;
 use App\Support\BusinessDay;
@@ -14,6 +14,7 @@ use Illuminate\Database\Seeder;
  * Totales diarios demo: por cada día del rango, cada operador de ingreso y
  * cada servicio INGRESO activo, cantidad pseudoaleatoria determinista
  * (pesos decrecientes por posición, demanda diaria 70%-130%).
+ * Se persisten como entries con type=INGRESO (módulo unificado).
  */
 class TotalsSeeder extends Seeder
 {
@@ -63,9 +64,9 @@ class TotalsSeeder extends Seeder
                     if ($qty <= 0) {
                         continue;
                     }
-                    DailyTotal::updateOrCreate(
+                    Entry::updateOrCreate(
                         ['userId' => $user->id, 'serviceId' => $service->id, 'date' => $day],
-                        ['quantity' => $qty]
+                        ['type' => Service::TYPE_INGRESO, 'quantity' => $qty]
                     );
                 }
             }

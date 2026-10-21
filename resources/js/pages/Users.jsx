@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowsUpDownIcon, BriefcaseIcon, ChevronDownIcon, ChevronUpIcon, KeyIcon, PencilSquareIcon, PowerIcon } from '@heroicons/react/24/outline';
+import { ArrowsUpDownIcon, BriefcaseIcon, ChevronDownIcon, ChevronUpIcon, EyeIcon, KeyIcon, PencilSquareIcon, PowerIcon } from '@heroicons/react/24/outline';
 import api from '../lib/api';
 import { RoleGuard } from '../components/layout/RoleGuard';
 import { Button, Input, Modal, PasswordInput, Select } from '../components/ui/controls';
@@ -28,6 +28,7 @@ export default function Users() {
     const [sortOrder, setSortOrder] = useState('desc');
     const [modal, setModal] = useState(null);
     const [form, setForm] = useState({});
+    const [viewUser, setViewUser] = useState(null);
 
     const load = async () => {
         try {
@@ -106,6 +107,16 @@ export default function Users() {
         }
     };
 
+    const openView = async (id) => {
+        try {
+            const r = await api.get(`/users/${id}`);
+            setViewUser(r.data.data);
+            setModal('view');
+        } catch {
+            toastError('No se pudo cargar el usuario.');
+        }
+    };
+
     const th = (key, label) => (
         <th className="cursor-pointer" onClick={() => toggleSort(key)}>
             <span className="inline-flex items-center gap-1">
@@ -149,6 +160,7 @@ export default function Users() {
                                     </td>
                                     <td className="whitespace-nowrap text-right">
                                         <div className="flex justify-end gap-1">
+                                            <Button size="sm" variant="secondary" title="Ver registro" onClick={() => openView(u.id)}><EyeIcon className="mr-1 h-4 w-4" />Ver</Button>
                                             <Button size="sm" variant="secondary" title="Cambiar cargo" onClick={() => { setForm({ ...u, position: u.active_position?.position || '', department: u.active_position?.department || '' }); setModal('position'); }}><BriefcaseIcon className="mr-1 h-4 w-4" />Cargo</Button>
                                             <Button size="sm" variant="secondary" title="Editar usuario" onClick={() => { setForm(u); setModal('edit'); }}><PencilSquareIcon className="mr-1 h-4 w-4" />Editar</Button>
                                             <Button size="sm" variant="secondary" title="Resetear contraseña" onClick={() => resetPass(u.id)}><KeyIcon className="mr-1 h-4 w-4" />Reset</Button>
@@ -207,6 +219,56 @@ export default function Users() {
                     <Input label="Departamento" value={form.department || ''} onChange={(e) => setForm({ ...form, department: e.target.value })} />
                     <Button type="submit">Guardar</Button>
                 </form>
+            </Modal>
+
+            <Modal isOpen={modal === 'view'} onClose={() => setModal(null)} title="Detalle del usuario">
+                {viewUser && (
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                        <div>
+                            <dt className="text-stone-500 dark:text-wa-muted">Usuario</dt>
+                            <dd className="font-mono">{viewUser.username}</dd>
+                        </div>
+                        <div>
+                            <dt className="text-stone-500 dark:text-wa-muted">Estado</dt>
+                            <dd>
+                                <span className={`badge ${viewUser.isActive ? 'badge-success' : 'badge-danger'}`}>{viewUser.isActive ? 'Activo' : 'Inactivo'}</span>
+                                {viewUser.canBackfill && <span className="badge badge-warning ml-1">Retroactivo</span>}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt className="text-stone-500 dark:text-wa-muted">Nombre</dt>
+                            <dd>{viewUser.firstName || '—'}</dd>
+                        </div>
+                        <div>
+                            <dt className="text-stone-500 dark:text-wa-muted">Apellido</dt>
+                            <dd>{viewUser.lastName || '—'}</dd>
+                        </div>
+                        <div>
+                            <dt className="text-stone-500 dark:text-wa-muted">Rol</dt>
+                            <dd><span className="badge badge-primary">{viewUser.role}</span></dd>
+                        </div>
+                        <div>
+                            <dt className="text-stone-500 dark:text-wa-muted">Título</dt>
+                            <dd>{viewUser.title || '—'}</dd>
+                        </div>
+                        <div>
+                            <dt className="text-stone-500 dark:text-wa-muted">Cargo Actual</dt>
+                            <dd>{viewUser.active_position?.position || '—'}</dd>
+                        </div>
+                        <div>
+                            <dt className="text-stone-500 dark:text-wa-muted">Departamento</dt>
+                            <dd>{viewUser.active_position?.department || '—'}</dd>
+                        </div>
+                        <div>
+                            <dt className="text-stone-500 dark:text-wa-muted">Registro Retroactivo</dt>
+                            <dd>{viewUser.canBackfill ? 'Habilitado' : 'No habilitado'}</dd>
+                        </div>
+                        <div>
+                            <dt className="text-stone-500 dark:text-wa-muted">Creado</dt>
+                            <dd>{viewUser.created_at ? new Date(viewUser.created_at).toLocaleString() : '—'}</dd>
+                        </div>
+                    </dl>
+                )}
             </Modal>
 
             <Modal isOpen={modal === 'deactivate'} onClose={() => setModal(null)} title="Desactivar usuario" size="sm">

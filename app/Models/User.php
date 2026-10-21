@@ -14,13 +14,12 @@ class User extends Authenticatable
     use HasApiTokens, HasFactory, HasMongoId, HasRoles, Notifiable;
 
     /**
-     * (M12) Nota de seguridad: `role`, `isActive`, `canBackfillEnabledAt` y
-     * `activePositionId` se mantienen asignables en masa porque hay código que
+     * (M12) Nota de seguridad: `isActive`, `canBackfillEnabledAt` y
+     * `empleadoId` se mantienen asignables en masa porque hay código que
      * NO puede tocarse y depende de ello:
      *   - database/seeders/UsersSeeder.php: firstOrCreate([... 'role','isActive']) y
      *     update(['canBackfill' => true, 'canBackfillEnabledAt' => ...]).
-     *   - app/Services/UserService.php: User::create([... 'role','isActive']) y
-     *     update(['activePositionId' => ...]) (createWithPosition/changePosition).
+     *   - app/Services/UserService.php: User::create([... 'role','isActive']).
      * Reducir $fillable rompería silenciosamente esos flujos y los tests
      * (UsersServicesTest / AuthTest). Mitigación aplicada sin romper contratos:
      * estas columnas sólo se escriben desde endpoints protegidos por
@@ -30,8 +29,8 @@ class User extends Authenticatable
     protected $fillable = [
         'username',
         'password',
+        'email',
         'role',
-        'title',
         'firstName',
         'lastName',
         'paternalSurname',
@@ -39,7 +38,8 @@ class User extends Authenticatable
         'isActive',
         'canBackfill',
         'canBackfillEnabledAt',
-        'activePositionId',
+        'empleadoId',
+        'creadoPorUsuarioId',
     ];
 
     protected $hidden = ['password', 'remember_token'];
@@ -52,16 +52,6 @@ class User extends Authenticatable
             'canBackfill' => 'boolean',
             'canBackfillEnabledAt' => 'date',
         ];
-    }
-
-    public function positions()
-    {
-        return $this->hasMany(Position::class, 'userId');
-    }
-
-    public function activePosition()
-    {
-        return $this->belongsTo(Position::class, 'activePositionId');
     }
 
     public function entries()
@@ -79,8 +69,52 @@ class User extends Authenticatable
         return $this->hasMany(Report::class, 'generatedById');
     }
 
+    /** Empleado de RRHH vinculado (1:1 opcional). */
+    public function empleado()
+    {
+        return $this->belongsTo(Empleado::class, 'empleadoId');
+    }
+
+    public function creadoPorUsuario()
+    {
+        return $this->belongsTo(self::class, 'creadoPorUsuarioId');
+    }
+
+    /** Puesto actual del empleado vinculado (FK a puestos normalizados). */
+    public function puestoActual()
+    {
+        return $this->hasOneThrough(
+            EmpleadoPuesto::class,
+            Empleado::class,
+            'id',       // Empleado.id (clave foránea en users.empleadoId)
+            'empleadoId', // EmpleadoPuesto.empleadoId
+            'empleadoId', // users.empleadoId (clave local)
+            'id'          // EmpleadoPuesto.id (clave local)
+        )->whereNull('fechaFin');
+    }
+
     public function getFullNameAttribute(): string
     {
         return trim("{$this->firstName} {$this->lastName} {$this->paternalSurname} {$this->maternalSurname}");
+    }
+
+    /**
+     * Nombre para display: prioriza el empleado de RRHH (con tratamiento
+     * académico) y cae a los nombres de la cuenta cuando no hay vínculo.
+     */
+    public function getDisplayNameAttribute(): string
+    {
+        $empleado = $this->empleado;
+
+        if ($empleado) {
+            $nombre = trim("{$empleado->nombre} {$empleado->apellidos}");
+            $nombre = trim("{$empleado->tratamiento?->abreviatura} {$nombre}");
+
+            if ($nombre !== '') {
+                return $nombre;
+            }
+        }
+
+        return $this->fullName;
     }
 }

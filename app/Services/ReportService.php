@@ -130,8 +130,12 @@ class ReportService
         $tp->setValue('NRO_CI', $meta['nroCI']);
         $tp->setValue('DIRIGIDO_A', $meta['dirigidoA']);
         $tp->setValue('PUESTO_DIRIGIDO_A', $meta['puestoDirigidoA']);
-        $tp->setValue('REMITENTE', trim("{$generator->title} {$generator->fullName}"));
-        $tp->setValue('PUESTO_REMITENTE', $generator->activePosition?->position ?? '');
+        // REMITENTE: prioriza el empleado de RRHH (tratamiento + nombre);
+        // si no está vinculado, usa los nombres de la cuenta.
+        $tp->setValue('REMITENTE', $generator->empleado
+            ? $generator->displayName
+            : $generator->fullName);
+        $tp->setValue('PUESTO_REMITENTE', $generator->empleado?->puestoActual?->puesto?->nombre ?? '');
         $tp->setValue('NRO_SEMANA', $computed['mode'] === 'WEEK' ? (string) $computed['start']->weekOfYear : '');
         $tp->setValue('FECHA_INICIO', BusinessDay::displayShort($computed['start']));
         $tp->setValue('FECHA_FIN', BusinessDay::displayShort($computed['end']->copy()->subSecond()));
@@ -557,7 +561,7 @@ class ReportService
             'nroCI' => $data['nroCI'],
             'dirigidoA' => $data['dirigidoA'],
             'puestoDirigidoA' => $data['puestoDirigidoA'],
-        ], $generator->fresh(['activePosition']), $path, $data['charts'] ?? []);
+        ], $generator->fresh(['empleado.puestoActual.puesto', 'empleado.tratamiento']), $path, $data['charts'] ?? []);
 
         return Report::create([
             'nroCI' => $data['nroCI'],
@@ -588,7 +592,7 @@ class ReportService
             'nroCI' => $data['nroCI'],
             'dirigidoA' => $data['dirigidoA'],
             'puestoDirigidoA' => $data['puestoDirigidoA'],
-        ], $generator->fresh(['activePosition']), $path, $data['charts'] ?? []);
+        ], $generator->fresh(['empleado.puestoActual.puesto', 'empleado.tratamiento']), $path, $data['charts'] ?? []);
 
         return $path;
     }

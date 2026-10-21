@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Models\DailyTotal;
+use App\Models\Entry;
 use App\Models\Service;
 use App\Models\User;
 use App\Support\ApiResponse;
@@ -12,8 +12,9 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Ingreso diario total: carga por trámite (upsert usuario×trámite×día)
- * y agregados día/semana/rango + serie diaria para el dashboard.
+ * Ingreso diario total: carga por trámite (upsert usuario×trámite×día sobre
+ * entries con type=INGRESO — unificado con el registro de entradas) y
+ * agregados día/semana/rango + serie diaria para el dashboard.
  * Día = [D, D+1) UTC · semana = 7 días lun–dom · rango máx 93 días.
  */
 class TotalService
@@ -178,9 +179,9 @@ class TotalService
         return DB::transaction(function () use ($user, $dayUtc, $items) {
             $rows = [];
             foreach ($items as $item) {
-                $rows[] = DailyTotal::updateOrCreate(
+                $rows[] = Entry::updateOrCreate(
                     ['userId' => $user->id, 'serviceId' => $item['serviceId'], 'date' => $dayUtc],
-                    ['quantity' => $item['quantity']]
+                    ['type' => Service::TYPE_INGRESO, 'quantity' => $item['quantity']]
                 )->fresh(['service']);
             }
 
@@ -236,7 +237,8 @@ class TotalService
             );
         }
 
-        $byDay = DailyTotal::query()
+        $byDay = Entry::query()
+            ->where('type', Service::TYPE_INGRESO)
             ->where('date', '>=', $start)
             ->where('date', '<', $end)
             ->groupBy(DB::raw('DATE(date)'))
@@ -276,25 +278,27 @@ class TotalService
 
     private function total(Carbon $start, Carbon $end): int
     {
-        return (int) DailyTotal::where('date', '>=', $start)->where('date', '<', $end)->sum('quantity');
+        return (int) Entry::where('type', Service::TYPE_INGRESO)
+            ->where('date', '>=', $start)->where('date', '<', $end)->sum('quantity');
     }
 
     /** Totales por servicio en orden del catálogo (solo > 0): [{nro, serviceId, tramite, total}]. */
     private function byTramite(Carbon $start, Carbon $end): array
     {
-        $sums = DailyTotal::query()
-            ->join('services', 'services.id', '=', 'daily_totals.serviceId')
-            ->where('daily_totals.date', '>=', $start)
-            ->where('daily_totals.date', '<', $end)
-            ->groupBy('daily_totals.serviceId', 'services.name', 'services.abreviation', 'services.codigo', 'services.sortOrder')
+        $sums = Entry::query()
+            ->join('services', 'services.id', '=', 'entries.serviceId')
+            ->where('entries.type', Service::TYPE_INGRESO)
+            ->where('entries.date', '>=', $start)
+            ->where('entries.date', '<', $end)
+            ->groupBy('entries.serviceId', 'services.name', 'services.abreviation', 'services.codigo', 'services.sortOrder')
             ->orderBy('services.sortOrder')
             ->orderBy('services.name')
             ->get([
-                'daily_totals.serviceId as serviceId',
+                'entries.serviceId as serviceId',
                 'services.name as serviceName',
                 'services.abreviation as abreviation',
                 'services.codigo as codigo',
-                DB::raw('SUM(daily_totals.quantity) as total'),
+                DB::raw('SUM(entries.quantity) as total'),
             ]);
 
         $out = [];

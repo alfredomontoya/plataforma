@@ -17,14 +17,15 @@ class RegisterUserRequest extends FormRequest
         return [
             'username' => ['required', 'string', 'min:3', 'max:50', Rule::unique('users', 'username')],
             'password' => ['required', 'string', 'min:6', 'max:100'],
+            'email' => ['required', 'email', 'max:191', Rule::unique('users', 'email')],
             'role' => ['required', Rule::in(['ADMIN', 'OPERATOR_INGRESO', 'OPERATOR_ENTREGA', 'JEFE'])],
-            'title' => ['required', Rule::in(['NONE', 'LIC', 'ABG', 'ING'])],
-            'firstName' => ['required', 'string', 'max:100'],
-            'lastName' => ['required', 'string', 'max:100'],
+            // Si hay empleado vinculado los nombres se copian de la ficha de
+            // RRHH; sin empleado, los nombres de la cuenta son obligatorios.
+            'firstName' => ['required_without:empleadoId', 'nullable', 'string', 'max:100'],
+            'lastName' => ['required_without:empleadoId', 'nullable', 'string', 'max:100'],
             'paternalSurname' => ['nullable', 'string', 'max:100'],
             'maternalSurname' => ['nullable', 'string', 'max:100'],
-            'position' => ['required', 'string', 'max:191'],
-            'department' => ['required', 'string', 'max:191'],
+            'empleadoId' => ['nullable', 'string', 'exists:empleados,id', Rule::unique('users', 'empleadoId')],
             'isActive' => ['sometimes', 'boolean'],
             'canBackfill' => ['sometimes', 'boolean'],
         ];
@@ -40,13 +41,15 @@ class RegisterUserRequest extends FormRequest
             'password.required' => 'La contraseña es obligatoria.',
             'password.min' => 'La contraseña debe tener al menos 6 caracteres.',
             'password.max' => 'La contraseña no puede superar 100 caracteres.',
+            'email.required' => 'El correo es obligatorio.',
+            'email.email' => 'El correo no tiene un formato válido.',
+            'email.unique' => 'El correo ya está registrado.',
             'role.required' => 'El rol es obligatorio.',
             'role.in' => 'Rol inválido.',
-            'title.in' => 'Título inválido.',
-            'firstName.required' => 'El nombre es obligatorio.',
-            'lastName.required' => 'El apellido es obligatorio.',
-            'position.required' => 'El cargo es obligatorio.',
-            'department.required' => 'El departamento es obligatorio.',
+            'firstName.required_without' => 'El nombre es obligatorio (o vincule un empleado).',
+            'lastName.required_without' => 'El apellido es obligatorio (o vincule un empleado).',
+            'empleadoId.exists' => 'El empleado seleccionado no existe.',
+            'empleadoId.unique' => 'Ese empleado ya tiene una cuenta de usuario.',
         ];
     }
 }

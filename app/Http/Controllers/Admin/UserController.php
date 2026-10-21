@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\RegisterUserRequest;
-use App\Http\Requests\UpdatePositionRequest;
 use App\Http\Requests\UpdateUserRequest;
+use App\Models\Empleado;
 use App\Models\User;
 use App\Services\UserService;
 use App\Support\ApiResponse;
@@ -15,14 +15,14 @@ use Illuminate\Support\Str;
 
 /**
  * Gestión de usuarios — todo solo ADMIN (contrato 04 § Usuarios).
+ * El puesto actual se deriva del empleado de RRHH vinculado (empleado_puestos).
  */
 class UserController extends Controller
 {
     private const SORTS = [
         'username' => 'users.username', 'firstName' => 'users.firstName',
-        'role' => 'users.role', 'title' => 'users.title',
+        'role' => 'users.role',
         'isActive' => 'users.isActive', 'createdAt' => 'users.created_at',
-        'position' => 'positions.position',
     ];
 
     public function index(Request $request): JsonResponse
@@ -31,8 +31,7 @@ class UserController extends Controller
         $sortOrder = strtolower((string) $request->query('sortOrder', 'desc')) === 'asc' ? 'asc' : 'desc';
         $limit = min(max((int) $request->query('limit', 20), 1), 100);
 
-        $q = User::query()->with('activePosition')->select('users.*')
-            ->leftJoin('positions', 'positions.id', '=', 'users.activePositionId');
+        $q = User::query()->with(['empleado.puestoActual.puesto', 'empleado.tratamiento']);
 
         if ($search = $request->query('search')) {
             // (Bajo/Medio) Escapa comodines LIKE (`%` `_` `\`) para búsqueda literal.
@@ -55,13 +54,15 @@ class UserController extends Controller
 
     public function show(string $id): JsonResponse
     {
-        return ApiResponse::ok(User::with(['activePosition', 'roles'])->findOrFail($id));
+        return ApiResponse::ok(User::with([
+            'empleado.puestoActual.puesto', 'empleado.tratamiento', 'roles',
+        ])->findOrFail($id));
     }
 
     public function store(RegisterUserRequest $request, UserService $users): JsonResponse
     {
         return ApiResponse::created(
-            $users->createWithPosition($request->validated())->load(['activePosition', 'roles'])
+            $users->create($request->validated(), $request->user())
         );
     }
 
@@ -77,16 +78,20 @@ class UserController extends Controller
         if (($data['canBackfill'] ?? false) && ! $user->canBackfill) {
             $data['canBackfillEnabledAt'] = now('UTC')->toDateString();
         }
+
+        // Vinculación a empleado: los nombres de la cuenta se copian de la
+        // ficha de RRHH (el empleado manda sobre los nombres propios).
+        if (array_key_exists('empleadoId', $data) && $data['empleadoId']) {
+            $empleado = Empleado::findOrFail($data['empleadoId']);
+            $data['firstName'] = $empleado->nombre;
+            $data['lastName'] = $empleado->apellidos;
+            $data['paternalSurname'] = null;
+            $data['maternalSurname'] = null;
+        }
+
         $user->update($data);
 
-        return ApiResponse::ok($user->fresh(['activePosition', 'roles']));
-    }
-
-    public function updatePosition(UpdatePositionRequest $request, string $id, UserService $users): JsonResponse
-    {
-        $position = $users->changePosition(User::findOrFail($id), $request->validated());
-
-        return ApiResponse::ok($position);
+        return ApiResponse::ok($user->fresh(['empleado.puestoActual.puesto', 'empleado.tratamiento', 'roles']));
     }
 
     public function destroy(string $id): JsonResponse

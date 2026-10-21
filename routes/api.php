@@ -26,7 +26,6 @@ Route::prefix('users')->middleware(['auth:sanctum', 'role:ADMIN'])->group(functi
     Route::post('/', [UserController::class, 'store']);
     Route::get('/{id}', [UserController::class, 'show']);
     Route::patch('/{id}', [UserController::class, 'update']);
-    Route::patch('/{id}/position', [UserController::class, 'updatePosition']);
     Route::delete('/{id}', [UserController::class, 'destroy']);
     Route::post('/{id}/reset-password', [UserController::class, 'resetPassword']);
 });

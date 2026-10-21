@@ -32,7 +32,7 @@ class AuthController extends Controller
 
         return ApiResponse::ok([
             'accessToken' => $token,
-            'user' => $user->load(['activePosition', 'roles']),
+            'user' => $user->load(['roles', 'empleado.puestoActual.puesto']),
         ]);
     }
 
@@ -44,7 +44,7 @@ class AuthController extends Controller
 
         return ApiResponse::ok([
             'accessToken' => $token,
-            'user' => $user->load(['activePosition', 'roles']),
+            'user' => $user->load(['roles', 'empleado.puestoActual.puesto']),
         ]);
     }
 
@@ -57,14 +57,14 @@ class AuthController extends Controller
 
     public function me(Request $request): JsonResponse
     {
-        return ApiResponse::ok($request->user()->load(['activePosition', 'roles', 'permissions']));
+        return ApiResponse::ok($request->user()->load(['roles', 'permissions', 'empleado.puestoActual.puesto']));
     }
 
     public function register(RegisterUserRequest $request, UserService $users): JsonResponse
     {
-        $user = $users->createWithPosition($request->validated());
+        $user = $users->create($request->validated(), $request->user());
 
-        return ApiResponse::created($user->load(['activePosition', 'roles']));
+        return ApiResponse::created($user->load(['roles', 'empleado.puestoActual.puesto']));
     }
 
     public function changePassword(ChangePasswordRequest $request): JsonResponse

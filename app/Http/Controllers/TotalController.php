@@ -4,7 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\DashboardRangeRequest;
 use App\Http\Requests\StoreTotalRequest;
-use App\Models\DailyTotal;
+use App\Models\Entry;
+use App\Models\Service;
 use App\Models\User;
 use App\Services\TotalService;
 use App\Support\ApiResponse;
@@ -63,7 +64,8 @@ class TotalController extends Controller
         $date = $request->query('date', BusinessDay::todayUtc()->toDateString());
         $day = BusinessDay::parseUtcDay($date);
 
-        $rows = DailyTotal::with('service')->where('userId', $request->user()->id)
+        $rows = Entry::with('service')->where('userId', $request->user()->id)
+            ->where('type', Service::TYPE_INGRESO)
             ->where('date', '>=', $day)
             ->where('date', '<', $day->copy()->addDay())
             ->get();

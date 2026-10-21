@@ -2,12 +2,14 @@
 
 namespace App\Console\Commands;
 
-use App\Models\DailyTotal;
+use App\Models\Entry;
+use App\Models\Service;
 use Database\Seeders\TotalsSeeder;
 use Illuminate\Console\Command;
 
 /**
  * Genera totales diarios demo (delega en TotalsSeeder).
+ * Persiste como entries con type=INGRESO (módulo unificado).
  *   php artisan platform:totals-seed --force
  *   php artisan platform:totals-seed --from=2026-09-01 --to=2026-09-18 --force
  */
@@ -16,10 +18,10 @@ class SeedTotals extends Command
     protected $signature = 'platform:totals-seed
         {--from= : inicio YYYY-MM-DD (default 1er día del mes actual)}
         {--to= : fin YYYY-MM-DD inclusivo (default hoy)}
-        {--clear : vacía daily_totals antes}
+        {--clear : vacía las entries de tipo INGRESO antes}
         {--force : sin confirmación}';
 
-    protected $description = 'Genera totales diarios demo en daily_totals';
+    protected $description = 'Genera totales diarios demo (entries type=INGRESO)';
 
     public function handle(): int
     {
@@ -35,20 +37,22 @@ class SeedTotals extends Command
             return self::FAILURE;
         }
 
+        $clearCount = fn (): int => Entry::where('type', Service::TYPE_INGRESO)->count();
+
         if ($this->option('clear') && ! $this->option('force') && $this->input->isInteractive()) {
-            if (! $this->confirm('Se eliminarán '.DailyTotal::count().' filas de daily_totals. ¿Continuar?', true)) {
+            if (! $this->confirm('Se eliminarán '.$clearCount().' entries de tipo INGRESO. ¿Continuar?', true)) {
                 $this->info('Cancelado.');
 
                 return self::SUCCESS;
             }
         }
         if ($this->option('clear')) {
-            DailyTotal::query()->delete();
+            Entry::where('type', Service::TYPE_INGRESO)->delete();
         }
 
         (new TotalsSeeder(null, $this->option('from') ?: null, $this->option('to') ?: null))->run();
 
-        $this->info('Totales demo generados: '.DailyTotal::count().' filas.');
+        $this->info('Totales demo generados: '.$clearCount().' entries INGRESO.');
 
         return self::SUCCESS;
     }
