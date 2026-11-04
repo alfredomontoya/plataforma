@@ -46,7 +46,7 @@ export default function Login() {
     };
 
     return (
-        <div className="relative flex min-h-screen items-center justify-center p-4">
+        <div className="relative flex min-h-screen flex-col items-center justify-center gap-4 p-4">
             <button
                 onClick={toggleTheme}
                 className="absolute right-4 top-4 rounded-lg border border-stone-200 bg-white p-2 text-stone-500 shadow-sm hover:bg-stone-100 dark:border-white/10 dark:bg-wa-panel dark:text-wa-muted dark:hover:bg-white/5"
@@ -81,9 +81,7 @@ export default function Login() {
                     Ingresar
                 </Button>
             </form>
-            <div className="mt-4">
-                <EnvBadge />
-            </div>
+            <EnvBadge />
         </div>
     );
 }

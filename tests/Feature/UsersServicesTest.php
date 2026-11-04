@@ -22,9 +22,9 @@ class UsersServicesTest extends TestCase
 
     private function admin()
     {
-        return app(UserService::class)->createWithPosition([
+        return app(UserService::class)->create([
             'username' => 'admin1', 'password' => 'password', 'role' => 'ADMIN',
-            'title' => 'LIC', 'firstName' => 'A', 'lastName' => 'U', 'position' => 'C', 'department' => 'D',
+            'firstName' => 'A', 'lastName' => 'U',
         ]);
     }
 
@@ -34,33 +34,29 @@ class UsersServicesTest extends TestCase
         $auth = fn () => $this->actingAs($admin, 'sanctum');
 
         // operador no puede
-        $op = app(UserService::class)->createWithPosition([
+        $op = app(UserService::class)->create([
             'username' => 'ing1', 'password' => 'password', 'role' => 'OPERATOR_INGRESO',
-            'title' => 'NONE', 'firstName' => 'I', 'lastName' => 'U', 'position' => 'C', 'department' => 'D',
+            'firstName' => 'I', 'lastName' => 'U',
         ]);
         $this->actingAs($op, 'sanctum')->getJson('/api/users')->assertStatus(403);
 
-        // crear + cargo inicial + rol Spatie
+        // crear + rol Spatie
         $created = $auth()->postJson('/api/users', [
-            'username' => 'ing2', 'password' => 'password', 'role' => 'OPERATOR_INGRESO',
-            'title' => 'NONE', 'firstName' => 'I2', 'lastName' => 'U',
-            'position' => 'Ventanilla', 'department' => 'La Paz',
+            'username' => 'ing2', 'password' => 'password', 'email' => 'ing2@test.local',
+            'role' => 'OPERATOR_INGRESO', 'firstName' => 'I2', 'lastName' => 'U',
         ])->assertCreated()->assertJson(['success' => true]);
         $id = $created->json('data.id');
-        $this->assertNotEmpty($created->json('data.active_position'));
+        $this->assertSame('ing2@test.local', $created->json('data.email'));
+        $this->assertNull($created->json('data.empleadoId'));
 
-        // filtros + orden por cargo
-        $auth()->getJson('/api/users?search=ing2&role=OPERATOR_INGRESO&isActive=true&sortBy=position&sortOrder=asc')
+        // filtros + orden por username
+        $auth()->getJson('/api/users?search=ing2&role=OPERATOR_INGRESO&isActive=true&sortBy=username&sortOrder=asc')
             ->assertOk()->assertJsonCount(1, 'data');
 
-        // editar rol sincroniza Spatie + backfill marca el día
+        // editar rol sincroniza Spatie y mantiene el backfill habilitado
         $auth()->patchJson("/api/users/{$id}", ['role' => 'JEFE', 'canBackfill' => true])->assertOk();
         $this->assertTrue(\App\Models\User::find($id)->hasRole('JEFE'));
-        $this->assertEquals(now('UTC')->toDateString(), \App\Models\User::find($id)->canBackfillEnabledAt->toDateString());
-
-        // cambiar cargo preserva historial
-        $auth()->patchJson("/api/users/{$id}/position", ['position' => 'Supervisor', 'department' => 'Cbba'])->assertOk();
-        $this->assertEquals(2, \App\Models\User::find($id)->positions()->count());
+        $this->assertTrue(\App\Models\User::find($id)->canBackfill);
 
         // desactivar es lógico
         $auth()->deleteJson("/api/users/{$id}")->assertOk();
@@ -68,29 +64,28 @@ class UsersServicesTest extends TestCase
         $this->assertDatabaseHas('users', ['id' => $id]);
     }
 
-    public function test_seed_admin_con_backfill(): void
+    public function test_seed_todos_con_backfill_por_defecto(): void
     {
         (new UsersSeeder())->run();
 
         $admin = User::where('username', 'admin')->firstOrFail();
         $this->assertTrue($admin->canBackfill);
-        $this->assertEquals(now('UTC')->toDateString(), $admin->canBackfillEnabledAt->toDateString());
 
-        $op = User::where('username', 'jquispe')->firstOrFail();
-        $this->assertFalse($op->canBackfill);
+        $op = User::where('username', 'jcamacho')->firstOrFail();
+        $this->assertTrue($op->canBackfill);
 
-        // Re-siembra idempotente: mantiene el flag en admin existentes.
-        $admin->update(['canBackfill' => false]);
+        // Re-siembra idempotente: vuelve a dejar el permiso por defecto.
+        $op->update(['canBackfill' => false]);
         (new UsersSeeder())->run();
-        $this->assertTrue($admin->fresh()->canBackfill);
+        $this->assertTrue($op->fresh()->canBackfill);
     }
 
     public function test_servicios_catalogo_y_crud(): void
     {
         $admin = $this->admin();
-        $op = app(UserService::class)->createWithPosition([
+        $op = app(UserService::class)->create([
             'username' => 'ing1', 'password' => 'password', 'role' => 'OPERATOR_INGRESO',
-            'title' => 'NONE', 'firstName' => 'I', 'lastName' => 'U', 'position' => 'C', 'department' => 'D',
+            'firstName' => 'I', 'lastName' => 'U',
         ]);
         $svc = Service::create(['name' => 'SERV X', 'abreviation' => 'SX', 'type' => 'INGRESO', 'isActive' => true, 'sortOrder' => 1]);
 

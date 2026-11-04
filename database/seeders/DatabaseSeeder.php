@@ -48,7 +48,7 @@ class DatabaseSeeder extends Seeder
     public static function wipeData(): void
     {
         Schema::disableForeignKeyConstraints();
-        foreach (['reports', 'entries', 'templates', 'services',
+        foreach (['reports', 'tramite_registros', 'entries', 'templates', 'services',
                      'model_has_roles', 'model_has_permissions', 'users'] as $table) {
             DB::table($table)->delete();
         }

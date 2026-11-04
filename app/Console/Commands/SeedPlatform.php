@@ -3,11 +3,10 @@
 namespace App\Console\Commands;
 
 use Database\Seeders\DatabaseSeeder;
-use Database\Seeders\EntriesSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Database\Seeders\ServicesSeeder;
 use Database\Seeders\TemplatesSeeder;
-use Database\Seeders\TotalsSeeder;
+use Database\Seeders\TramitesSeeder;
 use Database\Seeders\UsersSeeder;
 use Illuminate\Console\Command;
 
@@ -21,24 +20,18 @@ class SeedPlatform extends Command
         {--skip-users : omite usuarios}
         {--skip-services : omite servicios}
         {--skip-templates : omite plantillas}
-        {--skip-entries : omite entradas}
-        {--skip-totals : omite totales diarios}
+        {--skip-entries : omite trámites demo}
+        {--skip-totals : (obsoleto) los totales ahora salen de tramite_registros}
         {--no-wipe : no vacía antes de sembrar}
-        {--month=2026-08 : mes de entradas YYYY-MM (se ignora con --from)}
+        {--month=2026-08 : mes de trámites demo YYYY-MM (se ignora con --from)}
         {--from= : inicio de rango YYYY-MM-DD}
         {--to= : fin de rango YYYY-MM-DD (default hoy)}
-        {--min=3 : cantidad mín. día hábil}
-        {--max=10 : cantidad máx. día hábil}
-        {--weekendMin=1 : cantidad mín. fin de semana}
-        {--weekendMax=3 : cantidad máx. fin de semana}
-        {--perUserMin= : filas mín. por usuario/día (modo per-user; omite = legacy día×servicio)}
-        {--perUserMax= : filas máx. por usuario/día (modo per-user)}
-        {--operators-only : solo OPERATOR_* en modo per-user (por defecto entran todos)}
-        {--excludeJefe : excluye al JEFE en modo per-user (por defecto incluido; solo demo)}
-        {--seed= : semilla PRNG (defecto año*100+mes)}
+        {--min=3 : trámites mín. por día}
+        {--max=12 : trámites máx. por día}
+        {--seed= : semilla PRNG (defecto 20261104)}
         {--force : confirma el borrado masivo (obligatorio en producción)}';
 
-    protected $description = 'Siembra la plataforma (wipe → roles → users → services → templates → entries → totals)';
+    protected $description = 'Siembra la plataforma (wipe → roles → users → services → templates → trámites demo)';
 
     public function handle(): int
     {
@@ -77,24 +70,10 @@ class SeedPlatform extends Command
             (new TemplatesSeeder())->run();
         }
         if (! $this->option('skip-entries')) {
-            $perUserMin = $this->option('perUserMin') !== null ? (int) $this->option('perUserMin') : null;
-            $perUserMax = $this->option('perUserMax') !== null ? (int) $this->option('perUserMax') : null;
-            if ($perUserMin !== null && $perUserMax === null) {
-                $perUserMax = $perUserMin;
-            }
-            (new EntriesSeeder(
+            (new TramitesSeeder(
                 $this->option('month') ?: null, $this->option('from') ?: null, $this->option('to') ?: null,
                 (int) $this->option('min'), (int) $this->option('max'),
-                (int) $this->option('weekendMin'), (int) $this->option('weekendMax'),
-                $perUserMin, $perUserMax,
-                ! (bool) $this->option('operators-only'),
-                ! (bool) $this->option('excludeJefe'),
                 $this->option('seed') !== null ? (int) $this->option('seed') : null,
-            ))->run();
-        }
-        if (! $this->option('skip-totals')) {
-            (new TotalsSeeder(
-                $this->option('month') ?: null, $this->option('from') ?: null, $this->option('to') ?: null,
             ))->run();
         }
 

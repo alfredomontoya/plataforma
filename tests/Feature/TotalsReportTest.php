@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\DailyTotal;
 use App\Models\Service;
+use App\Models\TramiteRegistro;
 use App\Models\User;
 use App\Services\TemplateInspector;
 use App\Services\UserService;
@@ -27,9 +27,9 @@ class TotalsReportTest extends TestCase
 
     private function makeUser(string $username, string $role): User
     {
-        return app(UserService::class)->createWithPosition([
+        return app(UserService::class)->create([
             'username' => $username, 'password' => 'password', 'role' => $role,
-            'title' => 'LIC', 'firstName' => 'N', 'lastName' => 'U', 'position' => 'C', 'department' => 'D',
+            'firstName' => 'N', 'lastName' => 'U',
         ]);
     }
 
@@ -42,8 +42,12 @@ class TotalsReportTest extends TestCase
         $cursor = $monday->copy();
         $today = Carbon::now('UTC')->startOfDay();
         while ($cursor->lte($today)) {
-            DailyTotal::create(['userId' => $op->id, 'serviceId' => $s1->id, 'date' => $cursor->copy(), 'quantity' => 10]);
-            DailyTotal::create(['userId' => $op->id, 'serviceId' => $s2->id, 'date' => $cursor->copy(), 'quantity' => 5]);
+            for ($i = 1; $i <= 10; $i++) {
+                TramiteRegistro::create(['userId' => $op->id, 'serviceId' => $s1->id, 'date' => $cursor->copy(), 'placa' => sprintf('TN%04d', $i), 'activo' => true]);
+            }
+            for ($i = 1; $i <= 5; $i++) {
+                TramiteRegistro::create(['userId' => $op->id, 'serviceId' => $s2->id, 'date' => $cursor->copy(), 'placa' => sprintf('BV%04d', $i), 'activo' => true]);
+            }
             $cursor->addDay();
         }
 

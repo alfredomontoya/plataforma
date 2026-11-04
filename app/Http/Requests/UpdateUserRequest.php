@@ -20,8 +20,9 @@ class UpdateUserRequest extends FormRequest
                 'sometimes', 'nullable', 'email', 'max:191',
                 Rule::unique('users', 'email')->ignore($this->route('id')),
             ],
-            'firstName' => ['required_without:empleadoId', 'nullable', 'string', 'max:100'],
-            'lastName' => ['required_without:empleadoId', 'nullable', 'string', 'max:100'],
+            // PATCH parcial: si no se envían, se conservan los valores actuales.
+            'firstName' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'lastName' => ['sometimes', 'nullable', 'string', 'max:100'],
             'paternalSurname' => ['nullable', 'string', 'max:100'],
             'maternalSurname' => ['nullable', 'string', 'max:100'],
             'empleadoId' => [
@@ -39,8 +40,6 @@ class UpdateUserRequest extends FormRequest
             'role.in' => 'Rol inválido.',
             'email.email' => 'El correo no tiene un formato válido.',
             'email.unique' => 'El correo ya está registrado.',
-            'firstName.required_without' => 'El nombre es obligatorio (o vincule un empleado).',
-            'lastName.required_without' => 'El apellido es obligatorio (o vincule un empleado).',
             'empleadoId.exists' => 'El empleado seleccionado no existe.',
             'empleadoId.unique' => 'Ese empleado ya tiene una cuenta de usuario.',
         ];

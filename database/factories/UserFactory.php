@@ -24,7 +24,7 @@ class UserFactory extends Factory
             'firstName' => fake()->firstName(),
             'lastName' => fake()->lastName(),
             'isActive' => true,
-            'canBackfill' => false,
+            'canBackfill' => true,
             'remember_token' => Str::random(10),
         ];
     }

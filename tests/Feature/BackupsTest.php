@@ -49,9 +49,9 @@ class BackupsTest extends TestCase
 
     private function userWithRole(string $role): User
     {
-        return app(UserService::class)->createWithPosition([
+        return app(UserService::class)->create([
             'username' => strtolower($role).'_u', 'password' => 'password', 'role' => $role,
-            'title' => 'LIC', 'firstName' => 'A', 'lastName' => 'U', 'position' => 'C', 'department' => 'D',
+            'firstName' => 'A', 'lastName' => 'U',
         ]);
     }
 

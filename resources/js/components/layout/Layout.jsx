@@ -1,7 +1,6 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
     ClipboardDocumentListIcon,
-    TableCellsIcon,
     UsersIcon,
     Cog6ToothIcon,
     ChartBarIcon,
@@ -14,6 +13,7 @@ import {
     MoonIcon,
     ArrowRightOnRectangleIcon,
     ServerStackIcon,
+    ComputerDesktopIcon,
 } from '@heroicons/react/24/outline';
 import { useSidebarCollapsed, useTheme } from '../../hooks/useUi';
 import { useAuth } from '../../lib/auth';
@@ -23,7 +23,6 @@ import VehicleDoodles from './VehicleDoodles';
 
 const ITEMS = [
     { href: '/operador/entrada', label: 'Registro', icon: ClipboardDocumentListIcon, roles: ['OPERATOR_INGRESO', 'OPERATOR_ENTREGA', 'ADMIN'] },
-    { href: '/operador/total', label: 'Total diario', icon: TableCellsIcon, roles: ['OPERATOR_INGRESO', 'ADMIN'] },
     { href: '/admin/usuarios', label: 'Usuarios', icon: UsersIcon, roles: ['ADMIN'] },
     { href: '/admin/servicios', label: 'Servicios', icon: Cog6ToothIcon, roles: ['ADMIN'] },
     { href: '/admin/backups', label: 'Copias de seguridad', icon: ServerStackIcon, roles: ['ADMIN'] },
@@ -31,6 +30,7 @@ const ITEMS = [
     { href: '/jefe/reportes', label: 'Reportes', icon: DocumentPlusIcon, roles: ['JEFE', 'ADMIN'] },
     { href: '/jefe/plantillas', label: 'Plantillas', icon: DocumentDuplicateIcon, roles: ['JEFE', 'ADMIN'] },
     { href: '/jefe/reportes/historial', label: 'Historial', icon: ArchiveBoxIcon, roles: ['JEFE', 'ADMIN'] },
+    { href: '/sesiones', label: 'Sesiones', icon: ComputerDesktopIcon, roles: ['OPERATOR_INGRESO', 'OPERATOR_ENTREGA', 'ADMIN', 'JEFE'] },
     { href: '/acerca-de', label: 'Acerca de', icon: InformationCircleIcon, roles: ['OPERATOR_INGRESO', 'OPERATOR_ENTREGA', 'ADMIN', 'JEFE'] },
 ];
 
@@ -129,7 +129,7 @@ function Sidebar() {
 }
 
 export default function Layout({ children }) {
-    const { user, loading, logout } = useAuth();
+    const { user, loading, logout, otherSessions } = useAuth();
     const [dark, toggleTheme] = useTheme();
     const { url } = usePage();
 
@@ -159,6 +159,16 @@ export default function Layout({ children }) {
                         )}
                     </div>
                 </header>
+                {user && otherSessions > 0 && !url.startsWith('/sesiones') && (
+                    <div className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-200">
+                        <span>
+                            Tienes {otherSessions} {otherSessions === 1 ? 'sesión activa' : 'sesiones activas'} en otros dispositivos.
+                        </span>
+                        <Link href="/sesiones" className="shrink-0 font-medium underline underline-offset-2">
+                            Administrar
+                        </Link>
+                    </div>
+                )}
                 <main className="relative flex-1 overflow-auto p-4">
                     <VehicleDoodles />
                     <div className="relative">{children}</div>

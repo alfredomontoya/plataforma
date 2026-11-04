@@ -35,7 +35,7 @@ class UserService
                 'paternalSurname' => $empleado ? null : ($data['paternalSurname'] ?? null),
                 'maternalSurname' => $empleado ? null : ($data['maternalSurname'] ?? null),
                 'isActive' => $data['isActive'] ?? true,
-                'canBackfill' => $data['canBackfill'] ?? false,
+                'canBackfill' => $data['canBackfill'] ?? true,
                 'empleadoId' => $empleado?->id,
                 'creadoPorUsuarioId' => $creator?->id,
             ]);

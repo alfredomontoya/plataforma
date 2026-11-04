@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\Entry;
 use App\Models\Service;
+use App\Models\TramiteRegistro;
 use App\Models\User;
 use App\Services\UserService;
 use Carbon\Carbon;
@@ -27,27 +27,37 @@ class DashboardReportsTest extends TestCase
     private function seedDay(string $day, int $ingQty, int $entQty): void
     {
         $opI = User::where('username', 'ing1')->first()
-            ?? app(UserService::class)->createWithPosition([
+            ?? app(UserService::class)->create([
                 'username' => 'ing1', 'password' => 'password', 'role' => 'OPERATOR_INGRESO',
-                'title' => 'LIC', 'firstName' => 'I', 'lastName' => 'U', 'position' => 'C', 'department' => 'D',
+                'firstName' => 'I', 'lastName' => 'U',
             ]);
         $opE = User::where('username', 'ent1')->first()
-            ?? app(UserService::class)->createWithPosition([
+            ?? app(UserService::class)->create([
                 'username' => 'ent1', 'password' => 'password', 'role' => 'OPERATOR_ENTREGA',
-                'title' => 'LIC', 'firstName' => 'E', 'lastName' => 'U', 'position' => 'C', 'department' => 'D',
+                'firstName' => 'E', 'lastName' => 'U',
             ]);
         $ing = Service::firstOrCreate(['name' => 'SERV ING'], ['abreviation' => 'SI', 'type' => 'INGRESO', 'isActive' => true, 'sortOrder' => 1]);
         $ent = Service::firstOrCreate(['name' => 'SERV ENT'], ['abreviation' => 'SE', 'type' => 'ENTREGA', 'isActive' => true, 'sortOrder' => 1]);
 
-        Entry::create(['userId' => $opI->id, 'serviceId' => $ing->id, 'date' => Carbon::parse($day, 'UTC'), 'type' => 'INGRESO', 'quantity' => $ingQty]);
-        Entry::create(['userId' => $opE->id, 'serviceId' => $ent->id, 'date' => Carbon::parse($day, 'UTC'), 'type' => 'ENTREGA', 'quantity' => $entQty]);
+        // Un registro = un trámite: N filas equivalen a la cantidad anterior.
+        foreach ([[$opI, $ing, $ingQty, 'ING'], [$opE, $ent, $entQty, 'ENT']] as [$user, $service, $qty, $prefix]) {
+            for ($i = 1; $i <= $qty; $i++) {
+                TramiteRegistro::create([
+                    'userId' => $user->id,
+                    'serviceId' => $service->id,
+                    'date' => Carbon::parse($day, 'UTC'),
+                    'placa' => sprintf('%s%05d', $prefix, $i),
+                    'activo' => true,
+                ]);
+            }
+        }
     }
 
     private function jefe()
     {
-        return app(UserService::class)->createWithPosition([
+        return app(UserService::class)->create([
             'username' => 'jefe1', 'password' => 'password', 'role' => 'JEFE',
-            'title' => 'LIC', 'firstName' => 'J', 'lastName' => 'U', 'position' => 'C', 'department' => 'D',
+            'firstName' => 'J', 'lastName' => 'U',
         ]);
     }
 

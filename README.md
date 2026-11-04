@@ -1,9 +1,9 @@
 # Plataforma RO
 
 Plataforma de registro operativo de servicios **INGRESO / ENTREGA**:
-los operadores cargan cantidades diarias por servicio, los jefes ven el
-dashboard y generan informes oficiales `.docx`, y los administradores
-gestionan usuarios, servicios y plantillas.
+los operadores registran trámites uno a uno (fecha, tipo, placa/póliza y
+observaciones), los jefes ven el dashboard y generan informes oficiales
+`.docx`, y los administradores gestionan usuarios, servicios y plantillas.
 
 ## Stack
 
@@ -16,16 +16,16 @@ gestionan usuarios, servicios y plantillas.
 
 | Rol | Rutas | Qué hace |
 | --- | ----- | -------- |
-| `OPERATOR_INGRESO` / `OPERATOR_ENTREGA` | `/operador/entrada` | Registro diario por servicio (precarga lo guardado, resumen con totales) |
-| `OPERATOR_INGRESO` | `/operador/total` | Ingreso diario total por trámite (catálogo = servicios INGRESO, pegado de parte con auto-registro, precarga y total) |
+| `OPERATOR_INGRESO` / `OPERATOR_ENTREGA` | `/operador/entrada` | Registro individual de trámites (fecha, tipo, placa/póliza, observaciones; edición propia) |
 | `ADMIN` | `/admin/usuarios`, `/admin/servicios` | CRUD usuarios, servicios y reseteo de claves |
 | `JEFE` | `/jefe/dashboard`, `/jefe/reportes`, `/jefe/reportes/historial` | Agregados día/semana/rango, informes `.docx` con plantillas y gráficos + sección total diario |
 | `ADMIN`/`JEFE` | `/jefe/plantillas` | Módulo de plantillas: subir/inspeccionar (marcadores), guía de datos, vista de ejemplo, edición de textos fijos, duplicar |
 | `JEFE` | informe semanal (plantilla3 por defecto) | `{TABLA_INGRESO}` = tabla del total diario; `{GRAFICO_DISTRIBUCION_TRAMITE}`, `{GRAFICO_TOTAL_TRAMITE}`, `{GRAFICO_TENDENCIA_DIA}` = gráficos del dashboard en alta resolución |
 
 API bajo `/api`: `auth/*`, `users/*` (ADMIN), `services/*`,
-`entries/*`, `totals/*` (carga `OPERATOR_INGRESO`, lectura `ADMIN|JEFE`),
+`tramites/*` (registro de trámites; lectura `ADMIN|JEFE` vía `totals/summary/*`),
 `templates/*` (incluye `inspect`, `paragraphs`, `duplicate`, `download`), `reports/*`.
+La tabla `entries` se conserva como histórico no contabilizado.
 
 ## Puesta en marcha
 
@@ -37,20 +37,19 @@ composer dev       # serve + queue + logs + vite en paralelo
 ## Datos de prueba
 
 ```bash
-# Seed completo (wipe → roles → usuarios → servicios → plantillas → entradas)
+# Seed completo (wipe → roles → usuarios → servicios → plantillas → trámites demo)
 php artisan platform:seed --force
 
-# Totales diarios demo (operadores de ingreso, mes actual → hoy):
+# Trámites demo (mes actual → hoy):
 php artisan platform:totals-seed --force
 php artisan platform:totals-seed --from=2026-09-01 --to=2026-09-18 --force
 
-# Solo entradas (limpia entries antes):
-php artisan platform:entries-seed --force                                        # hoy, 5-10 filas/usuario
-php artisan platform:entries-seed --from=2026-08-01 --to=2026-08-31 --force      # rango, N/día/usuario
-php artisan platform:entries-seed --legacy --month=2026-08 --force               # modo original día×servicio
+# Solo histórico `entries` (no cuenta en dashboard/reportes):
+php artisan platform:entries-seed --force
 ```
 
-Usuarios base: `admin`, `jefe`, `ing1-5`, `ent1-5`.
+Usuarios base: `admin`, `chuachumanca`, `yvelazco` (JEFE) y los operadores
+`jcamacho`, `jcarreno`, `arodriguez`, `gchoque`, `rsuarez`, `rflores`, `cvargas`.
 
 > ⚠️ **Solo para desarrollo.** Los seeders generan datos demo y, sin
 > `--no-wipe`, borran todos los datos. En producción están **bloqueados**:

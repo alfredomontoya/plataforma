@@ -2,7 +2,8 @@
 
 namespace App\Services;
 
-use App\Models\Entry;
+use App\Models\Service;
+use App\Models\TramiteRegistro;
 use App\Support\ApiResponse;
 use App\Support\BusinessDay;
 use Carbon\Carbon;
@@ -11,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Agregados de dashboard (docs 03 § Dashboard): día/semana/rango + periodo previo + trend%.
+ * Fuente: `tramite_registros` activos (un registro = un trámite).
  * Día = [D, D+1) UTC · semana = 7 días lun–dom · rango = [from, to] inclusivo (máx 93 días).
  */
 class DashboardService
@@ -24,12 +26,12 @@ class DashboardService
 
         return [
             'date' => $date,
-            'ingreso' => $this->byService($start, $start->copy()->addDay(), 'INGRESO'),
-            'entrega' => $this->byService($start, $start->copy()->addDay(), 'ENTREGA'),
-            'ingresoPrevious' => $this->byService($prevStart, $start, 'INGRESO'),
-            'entregaPrevious' => $this->byService($prevStart, $start, 'ENTREGA'),
-            'totalIngreso' => $this->total($start, $start->copy()->addDay(), 'INGRESO'),
-            'totalEntrega' => $this->total($start, $start->copy()->addDay(), 'ENTREGA'),
+            'ingreso' => $this->byService($start, $start->copy()->addDay(), Service::TYPE_INGRESO),
+            'entrega' => $this->byService($start, $start->copy()->addDay(), Service::TYPE_ENTREGA),
+            'ingresoPrevious' => $this->byService($prevStart, $start, Service::TYPE_INGRESO),
+            'entregaPrevious' => $this->byService($prevStart, $start, Service::TYPE_ENTREGA),
+            'totalIngreso' => $this->total($start, $start->copy()->addDay(), Service::TYPE_INGRESO),
+            'totalEntrega' => $this->total($start, $start->copy()->addDay(), Service::TYPE_ENTREGA),
             'operators' => $this->operators($start, $start->copy()->addDay(), false),
         ];
     }
@@ -71,14 +73,16 @@ class DashboardService
             );
         }
 
-        $byDay = Entry::query()
-            ->where('entries.date', '>=', $start)
-            ->where('entries.date', '<', $end)
-            ->groupBy(DB::raw('DATE(entries.date)'))
+        $byDay = TramiteRegistro::query()
+            ->join('services', 'services.id', '=', 'tramite_registros.serviceId')
+            ->where('tramite_registros.activo', true)
+            ->where('tramite_registros.date', '>=', $start)
+            ->where('tramite_registros.date', '<', $end)
+            ->groupBy(DB::raw('DATE(tramite_registros.date)'))
             ->get([
-                DB::raw('DATE(entries.date) as day'),
-                DB::raw("SUM(CASE WHEN entries.type = 'INGRESO' THEN entries.quantity ELSE 0 END) as ingreso"),
-                DB::raw("SUM(CASE WHEN entries.type = 'ENTREGA' THEN entries.quantity ELSE 0 END) as entrega"),
+                DB::raw('DATE(tramite_registros.date) as day'),
+                DB::raw("SUM(CASE WHEN services.type = 'INGRESO' THEN 1 ELSE 0 END) as ingreso"),
+                DB::raw("SUM(CASE WHEN services.type = 'ENTREGA' THEN 1 ELSE 0 END) as entrega"),
             ])
             ->keyBy('day');
 
@@ -96,18 +100,18 @@ class DashboardService
 
     private function rangePayload(Carbon $start, Carbon $end, Carbon $prevStart): array
     {
-        $ing = $this->total($start, $end, 'INGRESO');
-        $ent = $this->total($start, $end, 'ENTREGA');
-        $ingPrev = $this->total($prevStart, $start, 'INGRESO');
-        $entPrev = $this->total($prevStart, $start, 'ENTREGA');
+        $ing = $this->total($start, $end, Service::TYPE_INGRESO);
+        $ent = $this->total($start, $end, Service::TYPE_ENTREGA);
+        $ingPrev = $this->total($prevStart, $start, Service::TYPE_INGRESO);
+        $entPrev = $this->total($prevStart, $start, Service::TYPE_ENTREGA);
 
         return [
             'periodStart' => $start->toDateString(),
             'periodEnd' => $end->copy()->subDay()->toDateString(),
             'ingreso' => ['current' => $ing, 'previous' => $ingPrev, 'trend' => BusinessDay::trend($ing, $ingPrev), 'total' => $ing],
             'entrega' => ['current' => $ent, 'previous' => $entPrev, 'trend' => BusinessDay::trend($ent, $entPrev), 'total' => $ent],
-            'ingresoByService' => $this->byService($start, $end, 'INGRESO'),
-            'entregaByService' => $this->byService($start, $end, 'ENTREGA'),
+            'ingresoByService' => $this->byService($start, $end, Service::TYPE_INGRESO),
+            'entregaByService' => $this->byService($start, $end, Service::TYPE_ENTREGA),
             'totalIngreso' => $ing,
             'totalEntrega' => $ent,
             'operators' => $this->operators($start, $end, true),
@@ -123,16 +127,22 @@ class DashboardService
     /** Totales por servicio: [{serviceId, serviceName, codigo, abreviation, total}]. */
     private function byService(Carbon $start, Carbon $end, string $type): array
     {
-        // (int): MySQL devuelve SUM() como string y el frontend suma los totales.
-        return Entry::query()
-            ->join('services', 'services.id', '=', 'entries.serviceId')
-            ->where('entries.date', '>=', $start)
-            ->where('entries.date', '<', $end)
-            ->where('entries.type', $type)
-            ->groupBy('entries.serviceId', 'services.name', 'services.codigo', 'services.abreviation')
-            ->orderByDesc(DB::raw('SUM(entries.quantity)'))
-            ->get(['entries.serviceId as serviceId', 'services.name as serviceName',
-                'services.codigo as codigo', 'services.abreviation as abreviation', DB::raw('SUM(entries.quantity) as total')])
+        // (int): MySQL devuelve COUNT() como string y el frontend suma los totales.
+        return TramiteRegistro::query()
+            ->join('services', 'services.id', '=', 'tramite_registros.serviceId')
+            ->where('tramite_registros.activo', true)
+            ->where('tramite_registros.date', '>=', $start)
+            ->where('tramite_registros.date', '<', $end)
+            ->where('services.type', $type)
+            ->groupBy('tramite_registros.serviceId', 'services.name', 'services.codigo', 'services.abreviation')
+            ->orderByDesc(DB::raw('COUNT(*)'))
+            ->get([
+                'tramite_registros.serviceId as serviceId',
+                'services.name as serviceName',
+                'services.codigo as codigo',
+                'services.abreviation as abreviation',
+                DB::raw('COUNT(*) as total'),
+            ])
             ->map(fn ($r) => [
                 'serviceId' => $r->serviceId,
                 'serviceName' => $r->serviceName,
@@ -145,25 +155,32 @@ class DashboardService
 
     private function total(Carbon $start, Carbon $end, string $type): int
     {
-        return (int) Entry::where('date', '>=', $start)->where('date', '<', $end)
-            ->where('type', $type)->sum('quantity');
+        return (int) TramiteRegistro::query()
+            ->join('services', 'services.id', '=', 'tramite_registros.serviceId')
+            ->where('tramite_registros.activo', true)
+            ->where('tramite_registros.date', '>=', $start)
+            ->where('tramite_registros.date', '<', $end)
+            ->where('services.type', $type)
+            ->count();
     }
 
     private function operators(Carbon $start, Carbon $end, bool $sortDesc): array
     {
-        $rows = Entry::query()
-            ->join('users', 'users.id', '=', 'entries.userId')
-            ->where('entries.date', '>=', $start)
-            ->where('entries.date', '<', $end)
-            ->groupBy('entries.userId', 'users.username', 'users.firstName', 'users.lastName',
+        $rows = TramiteRegistro::query()
+            ->join('users', 'users.id', '=', 'tramite_registros.userId')
+            ->join('services', 'services.id', '=', 'tramite_registros.serviceId')
+            ->where('tramite_registros.activo', true)
+            ->where('tramite_registros.date', '>=', $start)
+            ->where('tramite_registros.date', '<', $end)
+            ->groupBy('tramite_registros.userId', 'users.username', 'users.firstName', 'users.lastName',
                 'users.paternalSurname', 'users.maternalSurname', 'users.role')
-            ->orderByDesc(DB::raw('SUM(entries.quantity)'))
+            ->orderByDesc(DB::raw("SUM(CASE WHEN services.type = 'INGRESO' THEN 1 ELSE 0 END) + SUM(CASE WHEN services.type = 'ENTREGA' THEN 1 ELSE 0 END)"))
             ->get([
-                'entries.userId as userId', 'users.username', 'users.firstName', 'users.lastName',
+                'tramite_registros.userId as userId', 'users.username', 'users.firstName', 'users.lastName',
                 'users.paternalSurname', 'users.maternalSurname', 'users.role',
-                DB::raw("SUM(CASE WHEN entries.type = 'INGRESO' THEN entries.quantity ELSE 0 END) as ingreso"),
-                DB::raw("SUM(CASE WHEN entries.type = 'ENTREGA' THEN entries.quantity ELSE 0 END) as entrega"),
-                DB::raw('SUM(entries.quantity) as total'),
+                DB::raw("SUM(CASE WHEN services.type = 'INGRESO' THEN 1 ELSE 0 END) as ingreso"),
+                DB::raw("SUM(CASE WHEN services.type = 'ENTREGA' THEN 1 ELSE 0 END) as entrega"),
+                DB::raw("SUM(CASE WHEN services.type = 'INGRESO' THEN 1 ELSE 0 END) + SUM(CASE WHEN services.type = 'ENTREGA' THEN 1 ELSE 0 END) as total"),
             ]);
 
         $out = $rows->map(fn ($r) => [

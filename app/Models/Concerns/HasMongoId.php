@@ -6,7 +6,7 @@ use App\Support\MongoId;
 
 /**
  * PK string(24) estilo MongoDB ObjectId. Usar en las tablas de dominio
- * (users, services, entries, templates, reports y las del módulo de RRHH:
+ * (users, services, entries, tramite_registros, templates, reports y las del módulo de RRHH:
  * tratamientos, areas, puestos, empleados, empleado_puestos).
  * Las tablas de paquetes (sanctum, permission) conservan su PK original.
  */

@@ -58,7 +58,7 @@ export default function Users() {
     };
 
     const openNew = () => {
-        setForm({ role: 'OPERATOR_INGRESO', title: 'NONE', isActive: true });
+        setForm({ role: 'OPERATOR_INGRESO', title: 'NONE', isActive: true, canBackfill: true });
         setModal('new');
     };
 
@@ -208,7 +208,7 @@ export default function Users() {
                     <label className="flex items-center gap-2 text-sm">
                         <input type="checkbox" checked={!!form.canBackfill} onChange={(e) => setForm({ ...form, canBackfill: e.target.checked })} /> Registrar fechas anteriores
                     </label>
-                    <p className="text-xs text-stone-500 dark:text-wa-muted">El permiso retroactivo expira al cambiar de día.</p>
+                    <p className="text-xs text-stone-500 dark:text-wa-muted">Habilitado por defecto. Desmárquelo para bloquear el registro de fechas anteriores.</p>
                     <Button type="submit">Guardar</Button>
                 </form>
             </Modal>

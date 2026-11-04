@@ -3,15 +3,21 @@
 namespace Database\Seeders;
 
 use App\Models\User;
-use App\Services\UserService;
 use Illuminate\Database\Seeder;
 
 /**
  * 10 usuarios base fijos (sin aleatorios):
  * admin (ADMIN), jefe (JEFE) + 8 operadores (username = inicial del nombre + apellido).
  * Todos con password `password`. Idempotente: no duplica por username.
- * Los ADMIN quedan con canBackfill habilitado el día de siembra (permite
- * registrar fechas pasadas; la regla lo auto-revoca al día siguiente).
+ *
+ * El título académico y el historial de cargos ya no viven en `users`: se
+ * movieron al módulo de RRHH (`tratamientos` → `empleados` → `empleado_puestos`
+ * → `puestos`). Estas cuentas de sistema se siembran sin vínculo a empleado
+ * (`empleadoId` es nullable), por lo que no se asignan títulos aquí.
+ *
+ * Todos los usuarios sembrados quedan con canBackfill habilitado por defecto
+ * (pueden registrar fechas pasadas). El permiso es persistente y un ADMIN
+ * puede desactivarlo por usuario.
  */
 class UsersSeeder extends Seeder
 {
@@ -24,35 +30,29 @@ class UsersSeeder extends Seeder
         }
 
         $base = [
-            ['admin', 'ADMIN', 'ING', 'Admin', 'Sistema'],
-            ['jefe', 'JEFE', 'LIC', 'Jefe', 'Oficina'],
-            ['jquispe', 'OPERATOR_INGRESO', 'NONE', 'Juan', 'Quispe'],
-            ['cmamani', 'OPERATOR_INGRESO', 'NONE', 'Carlos', 'Mamani'],
-            ['lcondori', 'OPERATOR_INGRESO', 'NONE', 'Luis', 'Condori'],
-            ['mhuanca', 'OPERATOR_INGRESO', 'NONE', 'Miguel', 'Huanca'],
-            ['mapaza', 'OPERATOR_ENTREGA', 'NONE', 'María', 'Apaza'],
-            ['achoque', 'OPERATOR_ENTREGA', 'NONE', 'Ana', 'Choque'],
-            ['rflores', 'OPERATOR_ENTREGA', 'NONE', 'Rosa', 'Flores'],
-            ['cvargas', 'OPERATOR_ENTREGA', 'NONE', 'Carmen', 'Vargas'],
+            ['admin', 'ADMIN', 'Admin', 'Sistema'],
+            ['chuachumanca', 'JEFE', 'Claudia', 'Chuachumanca'],
+            ['jcamacho', 'OPERATOR_INGRESO', 'Jaime', 'Camacho'],
+            ['jcarreno', 'OPERATOR_INGRESO', 'Jose Ernesto', 'Carreno'],
+            ['arodriguez', 'OPERATOR_INGRESO', 'Alfredo', 'Rodriguez'],
+            ['rsuarez', 'OPERATOR_ENTREGA', 'Robin', 'Suarez'],
+            ['yvelazco', 'JEFE', 'Yderf', 'Velazco'],
+            ['gchoque', 'OPERATOR_INGRESO', 'Gonzalo', 'Choque'],
+            ['rflores', 'OPERATOR_ENTREGA', 'Rosa', 'Flores'],
+            ['cvargas', 'OPERATOR_ENTREGA', 'Carmen', 'Vargas'],
         ];
-        foreach ($base as [$username, $role, $title, $first, $last]) {
-            User::firstOrCreate(['username' => $username], [
-                'password' => 'password', 'role' => $role, 'title' => $title,
+
+        foreach ($base as [$username, $role, $first, $last]) {
+            $user = User::firstOrCreate(['username' => $username], [
+                'password' => 'password', 'role' => $role,
                 'firstName' => $first, 'lastName' => $last,
-                'isActive' => true, 'canBackfill' => false,
+                'isActive' => true, 'canBackfill' => true,
             ]);
-            $user = User::where('username', $username)->first();
-            if ($role === 'ADMIN') {
-                $user->update([
-                    'canBackfill' => true,
-                    'canBackfillEnabledAt' => now('UTC')->toDateString(),
-                ]);
+
+            if (! $user->canBackfill) {
+                $user->update(['canBackfill' => true]);
             }
-            if (! $user->activePositionId) {
-                app(UserService::class)->changePosition($user, [
-                    'title' => $title, 'position' => 'Cargo Base', 'department' => 'La Paz',
-                ]);
-            }
+
             if (! $user->hasRole($role)) {
                 $user->assignRole($role);
             }

@@ -4,11 +4,11 @@ use App\Http\Controllers\Admin\BackupController;
 use App\Http\Controllers\Admin\ServiceController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Auth\AuthController;
-use App\Http\Controllers\EntryController;
 use App\Http\Controllers\Jefe\DashboardController;
 use App\Http\Controllers\Jefe\ReportController;
 use App\Http\Controllers\Jefe\TemplateController;
 use App\Http\Controllers\TotalController;
+use App\Http\Controllers\TramiteRegistroController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
@@ -19,6 +19,9 @@ Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register'])->middleware(['auth:sanctum', 'role:ADMIN']);
     Route::post('/change-password', [AuthController::class, 'changePassword'])->middleware('auth:sanctum');
     Route::post('/reset-password/{id}', [AuthController::class, 'resetPassword'])->middleware(['auth:sanctum', 'role:ADMIN']);
+    Route::get('/sessions', [AuthController::class, 'sessions'])->middleware('auth:sanctum');
+    Route::delete('/sessions/others', [AuthController::class, 'destroyOtherSessions'])->middleware('auth:sanctum');
+    Route::delete('/sessions/{id}', [AuthController::class, 'destroySession'])->middleware('auth:sanctum');
 });
 
 Route::prefix('users')->middleware(['auth:sanctum', 'role:ADMIN'])->group(function () {
@@ -42,26 +45,16 @@ Route::prefix('services')->group(function () {
     });
 });
 
-Route::prefix('entries')->group(function () {
-    Route::post('/', [EntryController::class, 'store'])
-        ->middleware(['auth:sanctum', 'role:ADMIN|OPERATOR_INGRESO|OPERATOR_ENTREGA']);
-    Route::patch('/{id}', [EntryController::class, 'update'])
-        ->middleware(['auth:sanctum', 'role:ADMIN|OPERATOR_INGRESO|OPERATOR_ENTREGA']);
-    Route::get('/me', [EntryController::class, 'me'])->middleware('auth:sanctum');
-    Route::get('/', [EntryController::class, 'index'])->middleware(['auth:sanctum', 'role:ADMIN|JEFE']);
-    Route::get('/summary/daily', [EntryController::class, 'summaryDaily'])->middleware(['auth:sanctum', 'role:ADMIN|JEFE']);
-    Route::get('/summary/by-operator', [EntryController::class, 'summaryByOperator'])->middleware(['auth:sanctum', 'role:ADMIN|JEFE']);
-    Route::get('/summary/weekly', [EntryController::class, 'summaryWeekly'])->middleware(['auth:sanctum', 'role:ADMIN|JEFE']);
-});
+Route::prefix('tramites')
+    ->middleware(['auth:sanctum', 'role:ADMIN|OPERATOR_INGRESO|OPERATOR_ENTREGA'])
+    ->group(function () {
+        Route::get('/catalog', [TramiteRegistroController::class, 'catalog']);
+        Route::get('/', [TramiteRegistroController::class, 'index']);
+        Route::post('/', [TramiteRegistroController::class, 'store']);
+        Route::patch('/{id}', [TramiteRegistroController::class, 'update']);
+    });
 
 Route::prefix('totals')->group(function () {
-    Route::get('/catalog', [TotalController::class, 'catalog'])->middleware('auth:sanctum');
-    Route::post('/resolve', [TotalController::class, 'resolve'])
-        ->middleware(['auth:sanctum', 'role:ADMIN|OPERATOR_INGRESO']);
-    Route::get('/operators', [TotalController::class, 'operators'])->middleware(['auth:sanctum', 'role:ADMIN|OPERATOR_INGRESO']);
-    Route::post('/', [TotalController::class, 'store'])
-        ->middleware(['auth:sanctum', 'role:ADMIN|OPERATOR_INGRESO']);
-    Route::get('/me', [TotalController::class, 'me'])->middleware('auth:sanctum');
     Route::get('/summary/day', [TotalController::class, 'day'])->middleware(['auth:sanctum', 'role:ADMIN|JEFE']);
     Route::get('/summary/week', [TotalController::class, 'week'])->middleware(['auth:sanctum', 'role:ADMIN|JEFE']);
     Route::get('/summary/range', [TotalController::class, 'range'])->middleware(['auth:sanctum', 'role:ADMIN|JEFE']);

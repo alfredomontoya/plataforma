@@ -25,4 +25,9 @@ class Service extends Model
     {
         return $this->hasMany(Entry::class, 'serviceId');
     }
+
+    public function tramiteRegistros()
+    {
+        return $this->hasMany(TramiteRegistro::class, 'serviceId');
+    }
 }

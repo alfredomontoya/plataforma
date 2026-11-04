@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\Entry;
 use App\Models\Service;
+use App\Models\TramiteRegistro;
 use App\Services\UserService;
 use Carbon\Carbon;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -22,9 +22,9 @@ class ParityTest extends TestCase
 
     private function jefe()
     {
-        return app(UserService::class)->createWithPosition([
+        return app(UserService::class)->create([
             'username' => 'jefe1', 'password' => 'password', 'role' => 'JEFE',
-            'title' => 'LIC', 'firstName' => 'J', 'lastName' => 'U', 'position' => 'C', 'department' => 'D',
+            'firstName' => 'J', 'lastName' => 'U',
         ]);
     }
 
@@ -42,8 +42,8 @@ class ParityTest extends TestCase
         $jefe = $this->jefe();
         $auth = fn () => $this->actingAs($jefe, 'sanctum');
         $svc = Service::create(['name' => 'S', 'type' => 'INGRESO', 'isActive' => true, 'sortOrder' => 1]);
-        Entry::create(['userId' => $jefe->id, 'serviceId' => $svc->id,
-            'date' => now('UTC')->startOfDay(), 'type' => 'INGRESO', 'quantity' => 1]);
+        TramiteRegistro::create(['userId' => $jefe->id, 'serviceId' => $svc->id,
+            'date' => now('UTC')->startOfDay(), 'placa' => 'AAA111', 'activo' => true]);
 
         $payload = ['mode' => 'DAY', 'date' => now('UTC')->toDateString(),
             'nroCI' => 'UTC4-1', 'dirigidoA' => 'D', 'puestoDirigidoA' => 'P'];
@@ -59,8 +59,10 @@ class ParityTest extends TestCase
     {
         $jefe = $this->jefe();
         $svc = Service::create(['name' => 'SERV DOCX', 'abreviation' => 'SD', 'type' => 'INGRESO', 'isActive' => true, 'sortOrder' => 1]);
-        Entry::create(['userId' => $jefe->id, 'serviceId' => $svc->id,
-            'date' => now('UTC')->startOfDay(), 'type' => 'INGRESO', 'quantity' => 8]);
+        for ($i = 1; $i <= 8; $i++) {
+            TramiteRegistro::create(['userId' => $jefe->id, 'serviceId' => $svc->id,
+                'date' => now('UTC')->startOfDay(), 'placa' => sprintf('DOC%05d', $i), 'activo' => true]);
+        }
 
         // Plantilla explícita estilo anterior (el default actual es de totales).
         $path = tempnam(sys_get_temp_dir(), 'tpl').'.docx';

@@ -59,6 +59,11 @@ class User extends Authenticatable
         return $this->hasMany(Entry::class, 'userId');
     }
 
+    public function tramiteRegistros()
+    {
+        return $this->hasMany(TramiteRegistro::class, 'userId');
+    }
+
     public function templates()
     {
         return $this->hasMany(Template::class, 'uploadedById');

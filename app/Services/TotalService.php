@@ -2,8 +2,8 @@
 
 namespace App\Services;
 
-use App\Models\Entry;
 use App\Models\Service;
+use App\Models\TramiteRegistro;
 use App\Models\User;
 use App\Support\ApiResponse;
 use App\Support\BusinessDay;
@@ -12,182 +12,13 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Ingreso diario total: carga por trámite (upsert usuario×trámite×día sobre
- * entries con type=INGRESO — unificado con el registro de entradas) y
- * agregados día/semana/rango + serie diaria para el dashboard.
+ * Agregados de trámites para el dashboard (día/semana/rango + serie diaria),
+ * calculados desde `tramite_registros` (solo activos, tipo INGRESO).
  * Día = [D, D+1) UTC · semana = 7 días lun–dom · rango máx 93 días.
  */
 class TotalService
 {
     public const RANGE_MAX_DAYS = 93;
-
-    public function __construct(private EntryService $entries) {}
-
-    public function assertRole(User $user): void
-    {
-        if (! in_array($user->role, ['ADMIN', 'OPERATOR_INGRESO'], true)) {
-            throw new HttpResponseException(ApiResponse::error('Su rol no puede registrar el total diario.', 403));
-        }
-    }
-
-    /** Servicios INGRESO activos ordenados (catálogo del formulario). */
-    public function catalogServices()
-    {
-        return Service::where('type', Service::TYPE_INGRESO)->where('isActive', true)
-            ->orderBy('sortOrder')->orderBy('name')->get();
-    }
-
-    /** Catálogo numerado para el formulario: [{nro, tramite, serviceId}]. */
-    public function catalog(): array
-    {
-        return $this->catalogServices()->values()->map(
-            fn ($s, $i) => ['nro' => $i + 1, 'tramite' => $s->name, 'serviceId' => $s->id]
-        )->toArray();
-    }
-
-    /**
-     * Resuelve nombres contra servicios INGRESO (exacto, luego insensible
-     * a mayúsculas/espacios) y REGISTRA los faltantes como servicios
-     * INGRESO activos. Devuelve [{name, serviceId, codigo, abreviation, created}].
-     */
-    public function resolveNames(array $names): array
-    {
-        $clean = [];
-        foreach ($names as $name) {
-            $name = (string) preg_replace('/\s+/', ' ', trim((string) $name));
-            if ($name !== '' && ! in_array($name, $clean, true)) {
-                $clean[] = $name;
-            }
-        }
-        if ($clean === []) {
-            return [];
-        }
-
-        return DB::transaction(function () use ($clean) {
-            $services = $this->catalogServices();
-            $byExact = $services->keyBy('name');
-            $byNorm = $services->keyBy(fn ($s) => mb_strtoupper((string) preg_replace('/\s+/', ' ', trim($s->name))));
-            $maxSort = (int) ($services->max('sortOrder') ?? 0);
-            $takenCodigos = Service::whereNotNull('codigo')->pluck('codigo')
-                ->map(fn ($c) => mb_strtoupper((string) $c))->all();
-
-            $out = [];
-            foreach ($clean as $name) {
-                $found = $byExact->get($name)
-                    ?? $byNorm->get(mb_strtoupper((string) preg_replace('/\s+/', ' ', trim($name))));
-                if ($found) {
-                    $out[] = [
-                        'name' => $found->name, 'serviceId' => $found->id,
-                        'codigo' => $found->codigo, 'abreviation' => $found->abreviation,
-                        'created' => false,
-                    ];
-                    continue;
-                }
-                $maxSort++;
-                $created = Service::create([
-                    'name' => $name,
-                    'codigo' => $this->uniqueCodigo(self::initials($name), $takenCodigos),
-                    'abreviation' => self::abbreviation($name),
-                    'type' => Service::TYPE_INGRESO,
-                    'isActive' => true,
-                    'sortOrder' => $maxSort,
-                ]);
-                $byExact->put($created->name, $created);
-                $byNorm->put(mb_strtoupper($created->name), $created);
-                $out[] = [
-                    'name' => $created->name, 'serviceId' => $created->id,
-                    'codigo' => $created->codigo, 'abreviation' => $created->abreviation,
-                    'created' => true,
-                ];
-            }
-
-            return $out;
-        });
-    }
-
-    /** Conectores que no aportan a la abreviación. */
-    private const STOPWORDS = ['Y', 'E', 'DE', 'DEL', 'LA', 'EL', 'LOS', 'LAS', 'CON', 'POR', 'PARA', 'EN', 'AL'];
-
-    /** Palabras del nombre (mayúsculas, solo letras/números). */
-    private static function words(string $name): array
-    {
-        $upper = mb_strtoupper(trim((string) preg_replace('/\s+/', ' ', $name)));
-        $words = preg_split('/[^A-Z0-9Ñ]+/u', $upper, -1, PREG_SPLIT_NO_EMPTY);
-
-        return $words === false ? [] : array_values($words);
-    }
-
-    /** Código = primera letra de cada palabra (ej. "DUPLICADO PLACA VEHICULO" → "DPV"). */
-    public static function initials(string $name): string
-    {
-        $code = '';
-        foreach (self::words($name) as $w) {
-            $code .= mb_substr($w, 0, 1);
-        }
-
-        return $code !== '' ? $code : 'SVC';
-    }
-
-    /** Abreviación = 3 primeras letras de cada palabra con punto (ej. "DUP. PLA. VEH."). */
-    public static function abbreviation(string $name): string
-    {
-        $parts = [];
-        foreach (self::words($name) as $w) {
-            if (in_array($w, self::STOPWORDS, true)) {
-                continue;
-            }
-            $parts[] = mb_substr($w, 0, 3).'.';
-        }
-
-        $abbr = $parts !== [] ? implode(' ', $parts) : mb_substr(self::initials($name), 0, 3).'.';
-
-        return mb_substr($abbr, 0, 32);
-    }
-
-    /** Código único: ante coincidencia agrega 2, 3, ... (ej. "DPV" → "DPV2"). */
-    private function uniqueCodigo(string $base, array &$taken): string
-    {
-        $candidate = $base;
-        $n = 2;
-        while (in_array(mb_strtoupper($candidate), $taken, true)) {
-            $candidate = $base.$n;
-            $n++;
-        }
-        $taken[] = mb_strtoupper($candidate);
-
-        return $candidate;
-    }
-
-    /** Crea/actualiza en lote (upsert por usuario×servicio×día). Devuelve las filas. */
-    public function storeBatch(User $user, string $day, array $items): array
-    {
-        $this->assertRole($user);
-        $dayUtc = BusinessDay::parseUtcDay($day);
-        $this->entries->assertDateAllowed($user, $dayUtc);
-
-        $services = Service::where('type', Service::TYPE_INGRESO)->where('isActive', true)
-            ->whereIn('id', collect($items)->pluck('serviceId'))->get()->keyBy('id');
-
-        foreach ($items as $item) {
-            if (! $services->has($item['serviceId'])) {
-                throw new HttpResponseException(
-                    ApiResponse::error('Un servicio no está registrado como ingreso activo.', 400)
-                );
-            }
-        }
-
-        return DB::transaction(function () use ($user, $dayUtc, $items) {
-            $rows = [];
-            foreach ($items as $item) {
-                $rows[] = Entry::updateOrCreate(
-                    ['userId' => $user->id, 'serviceId' => $item['serviceId'], 'date' => $dayUtc],
-                    ['type' => Service::TYPE_INGRESO, 'quantity' => $item['quantity']]
-                )->fresh(['service']);
-            }
-
-            return $rows;
-        });
-    }
 
     public function day(string $date): array
     {
@@ -237,12 +68,17 @@ class TotalService
             );
         }
 
-        $byDay = Entry::query()
-            ->where('type', Service::TYPE_INGRESO)
-            ->where('date', '>=', $start)
-            ->where('date', '<', $end)
-            ->groupBy(DB::raw('DATE(date)'))
-            ->get([DB::raw('DATE(date) as day'), DB::raw('SUM(quantity) as total')])
+        $byDay = TramiteRegistro::query()
+            ->join('services', 'services.id', '=', 'tramite_registros.serviceId')
+            ->where('tramite_registros.activo', true)
+            ->where('services.type', Service::TYPE_INGRESO)
+            ->where('tramite_registros.date', '>=', $start)
+            ->where('tramite_registros.date', '<', $end)
+            ->groupBy(DB::raw('DATE(tramite_registros.date)'))
+            ->get([
+                DB::raw('DATE(tramite_registros.date) as day'),
+                DB::raw('COUNT(*) as total'),
+            ])
             ->keyBy('day');
 
         $out = [];
@@ -278,27 +114,33 @@ class TotalService
 
     private function total(Carbon $start, Carbon $end): int
     {
-        return (int) Entry::where('type', Service::TYPE_INGRESO)
-            ->where('date', '>=', $start)->where('date', '<', $end)->sum('quantity');
+        return (int) TramiteRegistro::query()
+            ->join('services', 'services.id', '=', 'tramite_registros.serviceId')
+            ->where('tramite_registros.activo', true)
+            ->where('services.type', Service::TYPE_INGRESO)
+            ->where('tramite_registros.date', '>=', $start)
+            ->where('tramite_registros.date', '<', $end)
+            ->count();
     }
 
     /** Totales por servicio en orden del catálogo (solo > 0): [{nro, serviceId, tramite, total}]. */
     private function byTramite(Carbon $start, Carbon $end): array
     {
-        $sums = Entry::query()
-            ->join('services', 'services.id', '=', 'entries.serviceId')
-            ->where('entries.type', Service::TYPE_INGRESO)
-            ->where('entries.date', '>=', $start)
-            ->where('entries.date', '<', $end)
-            ->groupBy('entries.serviceId', 'services.name', 'services.abreviation', 'services.codigo', 'services.sortOrder')
+        $sums = TramiteRegistro::query()
+            ->join('services', 'services.id', '=', 'tramite_registros.serviceId')
+            ->where('tramite_registros.activo', true)
+            ->where('services.type', Service::TYPE_INGRESO)
+            ->where('tramite_registros.date', '>=', $start)
+            ->where('tramite_registros.date', '<', $end)
+            ->groupBy('tramite_registros.serviceId', 'services.name', 'services.abreviation', 'services.codigo', 'services.sortOrder')
             ->orderBy('services.sortOrder')
             ->orderBy('services.name')
             ->get([
-                'entries.serviceId as serviceId',
+                'tramite_registros.serviceId as serviceId',
                 'services.name as serviceName',
                 'services.abreviation as abreviation',
                 'services.codigo as codigo',
-                DB::raw('SUM(entries.quantity) as total'),
+                DB::raw('COUNT(*) as total'),
             ]);
 
         $out = [];

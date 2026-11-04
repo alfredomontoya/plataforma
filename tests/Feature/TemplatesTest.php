@@ -23,9 +23,9 @@ class TemplatesTest extends TestCase
 
     private function makeUser(string $username, string $role): User
     {
-        return app(UserService::class)->createWithPosition([
+        return app(UserService::class)->create([
             'username' => $username, 'password' => 'password', 'role' => $role,
-            'title' => 'LIC', 'firstName' => 'N', 'lastName' => 'U', 'position' => 'C', 'department' => 'D',
+            'firstName' => 'N', 'lastName' => 'U',
         ]);
     }
 
