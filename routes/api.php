@@ -49,9 +49,12 @@ Route::prefix('tramites')
     ->middleware(['auth:sanctum', 'role:ADMIN|OPERATOR_INGRESO|OPERATOR_ENTREGA'])
     ->group(function () {
         Route::get('/catalog', [TramiteRegistroController::class, 'catalog']);
+        Route::get('/export/pdf', [TramiteRegistroController::class, 'exportPdf']);
+        Route::get('/export/excel', [TramiteRegistroController::class, 'exportExcel']);
         Route::get('/', [TramiteRegistroController::class, 'index']);
         Route::post('/', [TramiteRegistroController::class, 'store']);
         Route::patch('/{id}', [TramiteRegistroController::class, 'update']);
+        Route::delete('/{id}', [TramiteRegistroController::class, 'destroy']);
     });
 
 Route::prefix('totals')->group(function () {

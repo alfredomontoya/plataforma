@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import { EyeIcon, EyeSlashIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 export function Button({ variant = 'primary', size = 'md', loading, disabled, className = '', ...props }) {
     const base = 'inline-flex items-center justify-center rounded-lg font-medium transition disabled:opacity-50';
@@ -68,6 +68,33 @@ export function Select({ label, options = [], error, placeholder, ...props }) {
     );
 }
 
+export function SearchInput({ value, onChange, onClear, placeholder = 'Buscar…', className = '', ...props }) {
+    return (
+        <div className={`relative ${className}`}>
+            <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+            <input
+                type="text"
+                value={value}
+                onChange={onChange}
+                placeholder={placeholder}
+                aria-label={props['aria-label'] || placeholder}
+                className="w-full rounded-lg border border-stone-300 bg-white py-2 pl-9 pr-9 text-sm outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-white/10 dark:bg-wa-header"
+                {...props}
+            />
+            {value ? (
+                <button
+                    type="button"
+                    onClick={onClear}
+                    aria-label="Limpiar búsqueda"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-600 dark:hover:bg-white/10 dark:hover:text-stone-200"
+                >
+                    <XMarkIcon className="h-4 w-4" />
+                </button>
+            ) : null}
+        </div>
+    );
+}
+
 export function DatePicker({ label, value, onChange, maxDate, ...props }) {
     return (
         <Input
@@ -85,8 +112,8 @@ export function Modal({ isOpen, onClose, title, size = 'md', children }) {
     if (!isOpen) return null;
     const widths = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-3xl' };
     return (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-            <div className={`card w-full ${widths[size]} max-h-[90vh] overflow-auto p-5`} onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4" onClick={onClose}>
+            <div className={`card w-full ${widths[size]} max-h-[92vh] overflow-auto p-5`} onClick={(e) => e.stopPropagation()}>
                 <div className="mb-4 flex items-center justify-between">
                     <h2 className="text-lg font-semibold">{title}</h2>
                     <button onClick={onClose} className="text-stone-500 hover:text-stone-800 dark:hover:text-stone-200" aria-label="Cerrar">

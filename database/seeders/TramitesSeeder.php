@@ -107,15 +107,15 @@ class TramitesSeeder extends Seeder
         }
     }
 
-    /** Placa/póliza demo: 3 letras + 4 dígitos (ej. ABC1234). */
+    /** Placa/póliza demo: 4 dígitos + 3 letras (ej. 1234ABC). */
     private function plate(Mulberry32 $rng): string
     {
         $out = '';
-        for ($i = 0; $i < 3; $i++) {
-            $out .= self::LETTERS[$rng->int(0, strlen(self::LETTERS) - 1)];
-        }
         for ($i = 0; $i < 4; $i++) {
             $out .= (string) $rng->int(0, 9);
+        }
+        for ($i = 0; $i < 3; $i++) {
+            $out .= self::LETTERS[$rng->int(0, strlen(self::LETTERS) - 1)];
         }
 
         return $out;

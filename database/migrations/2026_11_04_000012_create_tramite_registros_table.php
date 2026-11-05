@@ -21,7 +21,7 @@ return new class extends Migration
             // Día calendario en medianoche UTC (nunca hora local).
             $table->dateTime('date')->index();
 
-            // Nro. de placa o póliza (alfanumérico, sin espacios).
+            // Nro. de placa (3/4 dígitos + 3 letras) o póliza (5-10 dígitos).
             $table->string('placa', 30);
             $table->string('observaciones', 500)->nullable();
             $table->boolean('activo')->default(true);

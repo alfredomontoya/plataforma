@@ -8,6 +8,8 @@ use App\Models\User;
 use App\Support\ApiResponse;
 use App\Support\BusinessDay;
 use Carbon\Carbon;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Exceptions\HttpResponseException;
 
 /**
@@ -81,22 +83,132 @@ class TramiteRegistroService
     }
 
     /** Registros del día: propios para operadores, todos para ADMIN. */
-    public function forDate(User $user, string $date): array
+    public function forDate(User $user, string $date, ?string $search = null): array
     {
-        $day = BusinessDay::parseUtcDay($date);
+        return $this->forRange($user, $date, $date, $search);
+    }
+
+    /**
+     * Registros de un rango inclusivo [from, to]: propios para operadores,
+     * todos para ADMIN. `search` filtra por trámite, placa/póliza,
+     * observaciones o usuario.
+     */
+    public function forRange(User $user, string $from, string $to, ?string $search = null): array
+    {
+        return $this->rangeQuery($user, $from, $to, $search)->get()->toArray();
+    }
+
+    /** Página de registros del rango, con el mismo alcance y búsqueda. */
+    public function paginateRange(
+        User $user,
+        string $from,
+        string $to,
+        ?string $search,
+        int $perPage,
+        int $page,
+    ): LengthAwarePaginator {
+        return $this->rangeQuery($user, $from, $to, $search)
+            ->paginate($perPage, ['*'], 'page', $page);
+    }
+
+    /** Cantidad de registros activos del rango (mismos filtros y alcance). */
+    public function activeCount(User $user, string $from, string $to, ?string $search = null): int
+    {
+        return $this->rangeQuery($user, $from, $to, $search)
+            ->reorder()
+            ->where('activo', true)
+            ->count();
+    }
+
+    /**
+     * Totales por tipo de trámite (solo activos), con el alcance por rol y
+     * los filtros actuales. Ordenado de mayor a menor cantidad.
+     */
+    public function summaryByType(User $user, string $from, string $to, ?string $search = null): array
+    {
+        return $this->rangeQuery($user, $from, $to, $search)
+            ->reorder()
+            ->where('activo', true)
+            ->select('serviceId')
+            ->selectRaw('COUNT(*) as total')
+            ->groupBy('serviceId')
+            ->orderByDesc('total')
+            ->get()
+            ->map(fn (TramiteRegistro $row) => [
+                'serviceId' => $row->serviceId,
+                'name' => $row->service?->name ?? 'Sin tipo',
+                'codigo' => $row->service?->codigo,
+                'abreviation' => $row->service?->abreviation,
+                'type' => $row->service?->type,
+                'total' => (int) $row->total,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /** Consulta base compartida por listado, paginación y exportaciones. */
+    private function rangeQuery(User $user, string $from, string $to, ?string $search = null): Builder
+    {
+        $start = BusinessDay::parseUtcDay($from);
+        $end = BusinessDay::parseUtcDay($to)->addDay();
 
         $q = TramiteRegistro::with([
             'service:id,name,codigo,abreviation,type',
             'user:id,username,firstName,lastName,paternalSurname,maternalSurname',
         ])
-            ->where('date', '>=', $day)
-            ->where('date', '<', $day->copy()->addDay());
+            ->where('date', '>=', $start)
+            ->where('date', '<', $end)
+            ->orderByDesc('date')
+            ->orderByDesc('created_at');
 
         if ($user->role !== 'ADMIN') {
             $q->where('userId', $user->id);
         }
 
-        return $q->orderByDesc('created_at')->get()->toArray();
+        $this->applySearch($q, $search);
+
+        return $q;
+    }
+
+    /** Cada palabra debe coincidir con al menos uno de los campos buscables. */
+    private function applySearch($query, ?string $search): void
+    {
+        $search = trim((string) $search);
+        if ($search === '') {
+            return;
+        }
+
+        $words = array_slice(
+            preg_split('/\s+/u', $search, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+            0,
+            10,
+        );
+
+        foreach ($words as $word) {
+            $word = str_replace(['%', '_'], '', $word);
+            if ($word === '') {
+                continue;
+            }
+            $like = '%'.$word.'%';
+
+            $query->where(function ($q) use ($like) {
+                $q->where('placa', 'like', $like)
+                    ->orWhere('observaciones', 'like', $like)
+                    ->orWhereHas('service', function ($s) use ($like) {
+                        $s->where('name', 'like', $like)
+                            ->orWhere('codigo', 'like', $like)
+                            ->orWhere('abreviation', 'like', $like)
+                            ->orWhere('type', 'like', $like);
+                    })
+                    ->orWhereHas('user', function ($u) use ($like) {
+                        $u->where('username', 'like', $like)
+                            ->orWhere('firstName', 'like', $like)
+                            ->orWhere('lastName', 'like', $like)
+                            ->orWhere('paternalSurname', 'like', $like)
+                            ->orWhere('maternalSurname', 'like', $like);
+                    });
+            });
+        }
     }
 
     public function create(User $user, array $data): TramiteRegistro
@@ -147,6 +259,24 @@ class TramiteRegistroService
             $registro->activo = (bool) $data['activo'];
         }
 
+        $registro->save();
+
+        return $registro->fresh(['service', 'user']);
+    }
+
+    /**
+     * Eliminación lógica: el registro queda inactivo y deja de contabilizarse.
+     * Solo el dueño o un ADMIN pueden hacerlo.
+     */
+    public function deactivate(User $user, TramiteRegistro $registro): TramiteRegistro
+    {
+        if ($user->role !== 'ADMIN' && $registro->userId !== $user->id) {
+            throw new HttpResponseException(
+                ApiResponse::error('No puede eliminar un registro de otro usuario.', 403)
+            );
+        }
+
+        $registro->activo = false;
         $registro->save();
 
         return $registro->fresh(['service', 'user']);
