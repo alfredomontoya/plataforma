@@ -92,6 +92,8 @@ class TramitesSeeder extends Seeder
                     'serviceId' => $service->id,
                     'date' => $day,
                     'placa' => $this->plate($rng),
+                    'ticket' => 'TK'.str_pad((string) $rng->int(0, 999999), 6, '0', STR_PAD_LEFT),
+                    'estado' => $rng->next() < 0.5 ? 'procesado' : 'recepcionado',
                     'observaciones' => null,
                     'activo' => true,
                     'created_at' => $createdAt,

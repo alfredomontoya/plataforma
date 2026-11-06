@@ -46,7 +46,7 @@ Route::prefix('services')->group(function () {
 });
 
 Route::prefix('tramites')
-    ->middleware(['auth:sanctum', 'role:ADMIN|OPERATOR_INGRESO|OPERATOR_ENTREGA'])
+    ->middleware(['auth:sanctum', 'role:ADMIN|JEFE|OPERATOR_INGRESO|OPERATOR_ENTREGA'])
     ->group(function () {
         Route::get('/catalog', [TramiteRegistroController::class, 'catalog']);
         Route::get('/export/pdf', [TramiteRegistroController::class, 'exportPdf']);

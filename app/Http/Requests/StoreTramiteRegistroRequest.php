@@ -19,6 +19,8 @@ class StoreTramiteRegistroRequest extends FormRequest
             'placa' => ['required', 'string', 'max:10', 'regex:/^(\d{3,4}[A-Za-z]{3}|\d{5,10})$/'],
             'observaciones' => ['nullable', 'string', 'max:500'],
             'activo' => ['sometimes', 'boolean'],
+            'ticket' => ['sometimes', 'nullable', 'string', 'max:8', 'regex:/^(?!.*-.*-)[A-Za-z0-9-]+$/'],
+            'estado' => ['sometimes', 'required', 'in:procesado,recepcionado'],
         ];
     }
 
@@ -33,6 +35,9 @@ class StoreTramiteRegistroRequest extends FormRequest
             'placa.regex' => 'El nro. de placa debe tener 3 o 4 dígitos y 3 letras (ej. 123ABC o 1234ABC); la póliza debe tener de 5 a 10 dígitos.',
             'placa.max' => 'El nro. de placa o póliza no puede superar 10 caracteres.',
             'observaciones.max' => 'Las observaciones no pueden superar 500 caracteres.',
+            'ticket.max' => 'El número de ticket no puede superar 8 caracteres.',
+            'ticket.regex' => 'El número de ticket solo puede contener letras y números.',
+            'estado.in' => 'El estado debe ser procesado o recepcionado.',
         ];
     }
 }

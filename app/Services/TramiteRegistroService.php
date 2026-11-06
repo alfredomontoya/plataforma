@@ -12,13 +12,18 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Exceptions\HttpResponseException;
 
-/**
- * Registro individual de trámites: un registro = un trámite.
- * Reglas de rol por tipo (INGRESO/ENTREGA), fechas (presente/pasado) y
- * edición (dueño o ADMIN).
- */
 class TramiteRegistroService
 {
+    private const ROLES_TICKET_REQUIRED = [
+        'OPERATOR_INGRESO',
+        'OPERATOR_ENTREGA',
+    ];
+
+    private const ESTADOS_VALIDOS = [
+        'procesado',
+        'recepcionado',
+    ];
+
     public function assertRoleForType(User $user, string $type): void
     {
         $map = [
@@ -26,9 +31,10 @@ class TramiteRegistroService
             'OPERATOR_ENTREGA' => Service::TYPE_ENTREGA,
         ];
 
-        if ($user->role === 'ADMIN') {
+        if (in_array($user->role, ['ADMIN', 'JEFE'], true)) {
             return;
         }
+
         if (($map[$user->role] ?? null) !== $type) {
             throw new HttpResponseException(
                 ApiResponse::error('Su rol no puede registrar este tipo de trámite.', 403)
@@ -37,8 +43,58 @@ class TramiteRegistroService
     }
 
     /**
-     * Sin fechas futuras. Las pasadas requieren `canBackfill` (activo por
-     * defecto; un ADMIN puede desactivarlo por usuario).
+     * El ticket es obligatorio para operadores de ingreso y entrega.
+     */
+    private function assertTicketRequired(User $user, ?string $ticket): void
+    {
+        if (
+            in_array($user->role, self::ROLES_TICKET_REQUIRED, true)
+            && ($ticket === null || trim($ticket) === '')
+        ) {
+            throw new HttpResponseException(
+                ApiResponse::error('El número de ticket es obligatorio para su rol.', 422)
+            );
+        }
+    }
+
+    /**
+     * Comprueba si existe otro registro con el mismo ticket.
+     * No bloquea la operación.
+     */
+    private function ticketWarning(?string $ticket, ?string $ignoreId = null): ?string
+    {
+        if ($ticket === null || trim($ticket) === '') {
+            return null;
+        }
+
+        $query = TramiteRegistro::where('ticket', trim($ticket));
+
+        if ($ignoreId !== null) {
+            $query->where('id', '!=', $ignoreId);
+        }
+
+        if ($query->exists()) {
+            return 'Advertencia: este número de ticket ya está registrado.';
+        }
+
+        return null;
+    }
+
+    /**
+     * Agrega una advertencia temporal al modelo.
+     * No se almacena en la base de datos.
+     */
+    private function attachTicketWarning(
+        TramiteRegistro $registro,
+        ?string $warning
+    ): TramiteRegistro {
+        $registro->setAttribute('advertencia', $warning);
+
+        return $registro;
+    }
+
+    /**
+     * Sin fechas futuras. Las pasadas requieren canBackfill.
      */
     public function assertDateAllowed(User $user, Carbon $dayUtc): void
     {
@@ -64,13 +120,18 @@ class TramiteRegistroService
     {
         $q = Service::where('isActive', true);
 
-        if ($user->role !== 'ADMIN') {
-            $q->where('type', $user->role === 'OPERATOR_ENTREGA'
-                ? Service::TYPE_ENTREGA
-                : Service::TYPE_INGRESO);
+        if (!in_array($user->role, ['ADMIN', 'JEFE'], true)) {
+            $q->where(
+                'type',
+                $user->role === 'OPERATOR_ENTREGA'
+                    ? Service::TYPE_ENTREGA
+                    : Service::TYPE_INGRESO
+            );
         }
 
-        return $q->orderByDesc('type')->orderBy('sortOrder')->orderBy('name')
+        return $q->orderByDesc('type')
+            ->orderBy('sortOrder')
+            ->orderBy('name')
             ->get(['id', 'name', 'codigo', 'abreviation', 'type'])
             ->map(fn (Service $s) => [
                 'id' => $s->id,
@@ -82,23 +143,28 @@ class TramiteRegistroService
             ->toArray();
     }
 
-    /** Registros del día: propios para operadores, todos para ADMIN. */
-    public function forDate(User $user, string $date, ?string $search = null): array
-    {
+    /** Registros del día. */
+    public function forDate(
+        User $user,
+        string $date,
+        ?string $search = null
+    ): array {
         return $this->forRange($user, $date, $date, $search);
     }
 
-    /**
-     * Registros de un rango inclusivo [from, to]: propios para operadores,
-     * todos para ADMIN. `search` filtra por trámite, placa/póliza,
-     * observaciones o usuario.
-     */
-    public function forRange(User $user, string $from, string $to, ?string $search = null): array
-    {
-        return $this->rangeQuery($user, $from, $to, $search)->get()->toArray();
+    /** Registros de un rango inclusivo. */
+    public function forRange(
+        User $user,
+        string $from,
+        string $to,
+        ?string $search = null
+    ): array {
+        return $this->rangeQuery($user, $from, $to, $search)
+            ->get()
+            ->toArray();
     }
 
-    /** Página de registros del rango, con el mismo alcance y búsqueda. */
+    /** Paginación de registros. */
     public function paginateRange(
         User $user,
         string $from,
@@ -111,21 +177,26 @@ class TramiteRegistroService
             ->paginate($perPage, ['*'], 'page', $page);
     }
 
-    /** Cantidad de registros activos del rango (mismos filtros y alcance). */
-    public function activeCount(User $user, string $from, string $to, ?string $search = null): int
-    {
+    /** Cantidad de registros activos. */
+    public function activeCount(
+        User $user,
+        string $from,
+        string $to,
+        ?string $search = null
+    ): int {
         return $this->rangeQuery($user, $from, $to, $search)
             ->reorder()
             ->where('activo', true)
             ->count();
     }
 
-    /**
-     * Totales por tipo de trámite (solo activos), con el alcance por rol y
-     * los filtros actuales. Ordenado de mayor a menor cantidad.
-     */
-    public function summaryByType(User $user, string $from, string $to, ?string $search = null): array
-    {
+    /** Totales por tipo de trámite. */
+    public function summaryByType(
+        User $user,
+        string $from,
+        string $to,
+        ?string $search = null
+    ): array {
         return $this->rangeQuery($user, $from, $to, $search)
             ->reorder()
             ->where('activo', true)
@@ -146,9 +217,13 @@ class TramiteRegistroService
             ->all();
     }
 
-    /** Consulta base compartida por listado, paginación y exportaciones. */
-    private function rangeQuery(User $user, string $from, string $to, ?string $search = null): Builder
-    {
+    /** Consulta base compartida por listados y exportaciones. */
+    private function rangeQuery(
+        User $user,
+        string $from,
+        string $to,
+        ?string $search = null
+    ): Builder {
         $start = BusinessDay::parseUtcDay($from);
         $end = BusinessDay::parseUtcDay($to)->addDay();
 
@@ -161,7 +236,7 @@ class TramiteRegistroService
             ->orderByDesc('date')
             ->orderByDesc('created_at');
 
-        if ($user->role !== 'ADMIN') {
+        if (!in_array($user->role, ['ADMIN', 'JEFE'], true)) {
             $q->where('userId', $user->id);
         }
 
@@ -170,10 +245,11 @@ class TramiteRegistroService
         return $q;
     }
 
-    /** Cada palabra debe coincidir con al menos uno de los campos buscables. */
+    /** Cada palabra debe coincidir con al menos un campo buscable. */
     private function applySearch($query, ?string $search): void
     {
         $search = trim((string) $search);
+
         if ($search === '') {
             return;
         }
@@ -186,13 +262,17 @@ class TramiteRegistroService
 
         foreach ($words as $word) {
             $word = str_replace(['%', '_'], '', $word);
+
             if ($word === '') {
                 continue;
             }
+
             $like = '%'.$word.'%';
 
             $query->where(function ($q) use ($like) {
                 $q->where('placa', 'like', $like)
+                    ->orWhere('ticket', 'like', $like)
+                    ->orWhere('estado', 'like', $like)
                     ->orWhere('observaciones', 'like', $like)
                     ->orWhereHas('service', function ($s) use ($like) {
                         $s->where('name', 'like', $like)
@@ -211,27 +291,56 @@ class TramiteRegistroService
         }
     }
 
+    /** Crear un registro. */
     public function create(User $user, array $data): TramiteRegistro
     {
         $service = $this->assertServiceAllowed($user, $data['serviceId']);
+
         $this->assertRoleForType($user, $service->type);
 
+        $ticket = $this->normalizeTicket($data['ticket'] ?? null);
+
+        $this->assertTicketRequired($user, $ticket);
+
+        $estado = $data['estado'] ?? 'procesado';
+
+        if (!in_array($estado, self::ESTADOS_VALIDOS, true)) {
+            throw new HttpResponseException(
+                ApiResponse::error('El estado debe ser procesado o recepcionado.', 422)
+            );
+        }
+
         $day = BusinessDay::parseUtcDay($data['date']);
+
         $this->assertDateAllowed($user, $day);
 
-        return TramiteRegistro::create([
+        // La duplicidad solamente genera una advertencia.
+        $warning = $this->ticketWarning($ticket);
+
+        $registro = TramiteRegistro::create([
             'userId' => $user->id,
             'serviceId' => $service->id,
             'date' => $day,
             'placa' => $this->normalizePlaca($data['placa']),
             'observaciones' => $data['observaciones'] ?? null,
             'activo' => $data['activo'] ?? true,
+            'ticket' => $ticket,
+            'estado' => $estado,
         ])->fresh(['service', 'user']);
+
+        return $this->attachTicketWarning($registro, $warning);
     }
 
-    public function update(User $user, TramiteRegistro $registro, array $data): TramiteRegistro
-    {
-        if ($user->role !== 'ADMIN' && $registro->userId !== $user->id) {
+    /** Actualizar un registro. */
+    public function update(
+        User $user,
+        TramiteRegistro $registro,
+        array $data
+    ): TramiteRegistro {
+        if (
+            !in_array($user->role, ['ADMIN', 'JEFE'], true)
+            && $registro->userId !== $user->id
+        ) {
             throw new HttpResponseException(
                 ApiResponse::error('No puede editar un registro de otro usuario.', 403)
             );
@@ -239,38 +348,76 @@ class TramiteRegistroService
 
         if (isset($data['serviceId'])) {
             $service = $this->assertServiceAllowed($user, $data['serviceId']);
+
             $this->assertRoleForType($user, $service->type);
+
             $registro->serviceId = $service->id;
         }
 
         if (isset($data['date'])) {
             $day = BusinessDay::parseUtcDay($data['date']);
+
             $this->assertDateAllowed($user, $day);
+
             $registro->date = $day;
         }
 
         if (array_key_exists('placa', $data)) {
             $registro->placa = $this->normalizePlaca($data['placa']);
         }
+
         if (array_key_exists('observaciones', $data)) {
             $registro->observaciones = $data['observaciones'];
         }
+
         if (array_key_exists('activo', $data)) {
             $registro->activo = (bool) $data['activo'];
         }
 
+        if (array_key_exists('ticket', $data)) {
+            $registro->ticket = $this->normalizeTicket($data['ticket']);
+        }
+
+        // Para operadores, se exige que el ticket final no esté vacío.
+        $this->assertTicketRequired(
+            $user,
+            $registro->ticket
+        );
+
+        if (array_key_exists('estado', $data)) {
+            if (!in_array($data['estado'], self::ESTADOS_VALIDOS, true)) {
+                throw new HttpResponseException(
+                    ApiResponse::error('El estado debe ser procesado o recepcionado.', 422)
+                );
+            }
+
+            $registro->estado = $data['estado'];
+        }
+
+        // Excluir el propio registro al comprobar duplicidad.
+        $warning = $this->ticketWarning(
+            $registro->ticket,
+            (string) $registro->getKey()
+        );
+
         $registro->save();
 
-        return $registro->fresh(['service', 'user']);
+        $registro = $registro->fresh(['service', 'user']);
+
+        return $this->attachTicketWarning($registro, $warning);
     }
 
     /**
-     * Eliminación lógica: el registro queda inactivo y deja de contabilizarse.
-     * Solo el dueño o un ADMIN pueden hacerlo.
+     * Eliminación lógica.
      */
-    public function deactivate(User $user, TramiteRegistro $registro): TramiteRegistro
-    {
-        if ($user->role !== 'ADMIN' && $registro->userId !== $user->id) {
+    public function deactivate(
+        User $user,
+        TramiteRegistro $registro
+    ): TramiteRegistro {
+        if (
+            !in_array($user->role, ['ADMIN', 'JEFE'], true)
+            && $registro->userId !== $user->id
+        ) {
             throw new HttpResponseException(
                 ApiResponse::error('No puede eliminar un registro de otro usuario.', 403)
             );
@@ -286,13 +433,13 @@ class TramiteRegistroService
     {
         $service = Service::where('isActive', true)->find($id);
 
-        if (! $service) {
+        if (!$service) {
             throw new HttpResponseException(
                 ApiResponse::error('El tipo de trámite no existe o no está activo.', 400)
             );
         }
 
-        if ($user->role !== 'ADMIN') {
+        if (!in_array($user->role, ['ADMIN', 'JEFE'], true)) {
             $expected = $user->role === 'OPERATOR_ENTREGA'
                 ? Service::TYPE_ENTREGA
                 : Service::TYPE_INGRESO;
@@ -310,6 +457,22 @@ class TramiteRegistroService
     /** Alfanumérico sin espacios, en mayúsculas. */
     private function normalizePlaca(string $placa): string
     {
-        return mb_strtoupper((string) preg_replace('/\s+/', '', trim($placa)));
+        return mb_strtoupper(
+            (string) preg_replace('/\s+/', '', trim($placa))
+        );
+    }
+
+    /** Ticket alfanumérico sin espacios y en mayúsculas; vacío => null. */
+    private function normalizeTicket(?string $ticket): ?string
+    {
+        if ($ticket === null) {
+            return null;
+        }
+
+        $ticket = mb_strtoupper(
+            (string) preg_replace('/\s+/', '', trim($ticket))
+        );
+
+        return $ticket !== '' ? $ticket : null;
     }
 }

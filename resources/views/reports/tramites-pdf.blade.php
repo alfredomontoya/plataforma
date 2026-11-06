@@ -75,6 +75,8 @@
         }
         .badge-on { background: #dcfce7; color: #166534; }
         .badge-off { background: #e7e5e4; color: #57534e; }
+        .badge-procesado { background: #fef3c7; color: #92400e; }
+        .badge-recepcionado { background: #dbeafe; color: #1e40af; }
         .empty {
             text-align: center;
             color: #78716c;
@@ -116,18 +118,20 @@
 
     <table class="data">
         <colgroup>
-            <col style="width: 10%;">
-            <col style="width: 7%;">
-            <col style="width: 27%;">
-            <col style="width: 15%;">
-            <col style="width: 20%;">
+            <col style="width: 8%;">
+            <col style="width: 6%;">
+            <col style="width: 23%;">
             <col style="width: 12%;">
             <col style="width: 9%;">
+            <col style="width: 18%;">
+            <col style="width: 10%;">
+            <col style="width: 8%;">
+            <col style="width: 6%;">
         </colgroup>
         <thead>
             <tr>
                 @foreach ($headers as $header)
-                    <th class="{{ in_array($header, ['Fecha', 'Hora', 'Nro. placa / póliza', 'Estado']) ? 'center' : '' }}">
+                    <th class="{{ in_array($header, ['Fecha', 'Hora', 'Nro. placa / póliza', 'Ticket', 'Estado', 'Activo']) ? 'center' : '' }}">
                         {{ $header }}
                     </th>
                 @endforeach
@@ -140,10 +144,14 @@
                     <td class="center">{{ $row[1] }}</td>
                     <td>{{ $row[2] }}</td>
                     <td class="center mono">{{ $row[3] }}</td>
-                    <td>{{ $row[4] ?: '—' }}</td>
-                    <td>{{ $row[5] }}</td>
+                    <td class="center mono">{{ $row[4] }}</td>
+                    <td>{{ $row[5] ?: '—' }}</td>
+                    <td>{{ $row[6] }}</td>
                     <td class="center">
-                        <span class="badge {{ $row[6] === 'Activo' ? 'badge-on' : 'badge-off' }}">{{ $row[6] }}</span>
+                        <span class="badge {{ $row[7] === 'Recepcionado' ? 'badge-recepcionado' : 'badge-procesado' }}">{{ $row[7] }}</span>
+                    </td>
+                    <td class="center">
+                        <span class="badge {{ $row[8] === 'Activo' ? 'badge-on' : 'badge-off' }}">{{ $row[8] }}</span>
                     </td>
                 </tr>
             @empty

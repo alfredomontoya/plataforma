@@ -30,7 +30,7 @@ const SECTIONS = [
         id: 'operacion',
         label: 'Operación',
         items: [
-            { href: '/operador/entrada', label: 'Registro', icon: ClipboardDocumentListIcon, roles: ['OPERATOR_INGRESO', 'OPERATOR_ENTREGA', 'ADMIN'] },
+            { href: '/operador/entrada', label: 'Registro', icon: ClipboardDocumentListIcon, roles: ['OPERATOR_INGRESO', 'OPERATOR_ENTREGA', 'ADMIN', 'JEFE'] },
         ],
     },
     {
@@ -38,9 +38,9 @@ const SECTIONS = [
         label: 'Análisis',
         items: [
             { href: '/jefe/dashboard', label: 'Panel de control', icon: ChartBarIcon, roles: ['JEFE', 'ADMIN'] },
-            { href: '/jefe/reportes', label: 'Reportes', icon: DocumentPlusIcon, roles: ['JEFE', 'ADMIN'] },
-            { href: '/jefe/reportes/historial', label: 'Historial', icon: ArchiveBoxIcon, roles: ['JEFE', 'ADMIN'] },
-            { href: '/jefe/plantillas', label: 'Plantillas', icon: DocumentDuplicateIcon, roles: ['JEFE', 'ADMIN'] },
+            // { href: '/jefe/reportes', label: 'Reportes', icon: DocumentPlusIcon, roles: ['JEFE', 'ADMIN'] },
+            // { href: '/jefe/reportes/historial', label: 'Historial', icon: ArchiveBoxIcon, roles: ['JEFE', 'ADMIN'] },
+            // { href: '/jefe/plantillas', label: 'Plantillas', icon: DocumentDuplicateIcon, roles: ['JEFE', 'ADMIN'] },
         ],
     },
     {

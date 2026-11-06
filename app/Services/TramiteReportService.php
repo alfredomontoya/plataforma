@@ -29,9 +29,11 @@ class TramiteReportService
         'Hora',
         'Tipo de trámite',
         'Nro. placa / póliza',
+        'Ticket',
         'Observaciones',
         'Usuario',
         'Estado',
+        'Activo',
     ];
 
     public function __construct(private TramiteRegistroService $tramites) {}
@@ -76,7 +78,7 @@ class TramiteReportService
         $sheet->setTitle('Registros');
         $sheet->setShowGridLines(false);
 
-        $lastColumn = 'G';
+        $lastColumn = 'I';
         $lastRow = 8 + count($rows);
         $headerRow = 8;
 
@@ -134,9 +136,10 @@ class TramiteReportService
                 ],
                 'alignment' => ['vertical' => Alignment::VERTICAL_TOP, 'wrapText' => true],
             ]);
-            $sheet->getStyle('A'.($headerRow + 1).":B{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheet->getStyle('D'.($headerRow + 1).":D{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheet->getStyle('G'.($headerRow + 1).":G{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            foreach (['A', 'B', 'D', 'E', 'H', 'I'] as $column) {
+                $sheet->getStyle("{$column}".($headerRow + 1).":{$column}{$lastRow}")
+                    ->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            }
             $sheet->getStyle("A{$headerRow}:{$lastColumn}{$lastRow}")->getAlignment()->setWrapText(true);
 
             $sheet->setAutoFilter("A{$headerRow}:{$lastColumn}{$lastRow}");
@@ -146,7 +149,7 @@ class TramiteReportService
         $sheet->getRowDimension($headerRow)->setRowHeight(22);
         $sheet->freezePane('A'.($headerRow + 1));
 
-        $widths = ['A' => 11, 'B' => 8, 'C' => 27, 'D' => 17, 'E' => 33, 'F' => 22, 'G' => 10];
+        $widths = ['A' => 11, 'B' => 8, 'C' => 27, 'D' => 17, 'E' => 12, 'F' => 33, 'G' => 22, 'H' => 13, 'I' => 9];
         foreach ($widths as $column => $width) {
             $sheet->getColumnDimension($column)->setWidth($width);
         }
@@ -193,7 +196,7 @@ class TramiteReportService
     private function excelMeta($sheet, int $row, string $label, string $value): void
     {
         $sheet->setCellValueExplicit("A{$row}", $label, DataType::TYPE_STRING);
-        $sheet->mergeCells("B{$row}:G{$row}");
+        $sheet->mergeCells("B{$row}:I{$row}");
         $sheet->setCellValueExplicit("B{$row}", $value, DataType::TYPE_STRING);
     }
 
@@ -206,11 +209,21 @@ class TramiteReportService
                 $this->timeLabel($row['created_at'] ?? null),
                 (string) ($row['service']['name'] ?? '—'),
                 (string) ($row['placa'] ?? '—'),
+                (string) ($row['ticket'] ?? '—'),
                 (string) ($row['observaciones'] ?? ''),
                 $this->userName($row['user'] ?? []),
+                $this->estadoLabel($row['estado'] ?? null),
                 ! empty($row['activo']) ? 'Activo' : 'Inactivo',
             ];
         }, $records);
+    }
+
+    private function estadoLabel(?string $estado): string
+    {
+        return match ($estado) {
+            'recepcionado' => 'Recepcionado',
+            default => 'Procesado',
+        };
     }
 
     private function userName(array $user): string

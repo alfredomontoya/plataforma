@@ -5,12 +5,19 @@ import { useAuth } from '../lib/auth';
 import { saveBlob } from '../lib/reportShared';
 import { RoleGuard } from '../components/layout/RoleGuard';
 import { Combobox } from '../components/ui/Combobox';
-import { Button, Input, Modal, SearchInput } from '../components/ui/controls';
+import { Button, Input, Modal, SearchInput, Select } from '../components/ui/controls';
 import { Pagination, PAGE_SIZE_OPTIONS } from '../components/ui/Pagination';
 import { RangeDatePicker } from '../components/ui/RangeDatePicker';
 import { useToast } from '../components/ui/Toast';
 
-const EMPTY = { date: '', serviceId: '', placa: '', observaciones: '', activo: true };
+const EMPTY = { date: '', serviceId: '', placa: '', ticket: '', estado: 'procesado', observaciones: '', activo: true };
+
+const TICKET_ROLES = ['OPERATOR_INGRESO', 'OPERATOR_ENTREGA'];
+
+const ESTADO_OPTIONS = [
+    { value: 'procesado', label: 'Procesado' },
+    { value: 'recepcionado', label: 'Recepcionado' },
+];
 
 const PAGE_SIZE_KEY = 'tramites.pageSize';
 const DEFAULT_PAGE_SIZE = 20;
@@ -29,6 +36,15 @@ const POLIZA_RE = /^\d{5,10}$/;
 const PLACA_MESSAGE = 'Formato inválido. Placa: 3 o 4 dígitos y 3 letras (ej. 123ABC o 1234ABC). Póliza: de 5 a 10 dígitos.';
 
 const sanitizePlaca = (value) => String(value ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+
+const sanitizeTicket = (value) =>
+  String(value ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9-]/g, '')
+    .replace(/-/g, (match, offset, string) =>
+      string.indexOf('-') === offset ? match : ''
+    )
+    .slice(0, 8);
 
 const placaKind = (value) => {
     if (PLACA_RE.test(value)) return 'placa';
@@ -53,6 +69,12 @@ const fmtTime = (value) => {
 };
 
 const typeLabel = (type) => (type === 'ENTREGA' ? 'Entrega' : 'Ingreso');
+
+const estadoLabel = (estado) => (estado === 'recepcionado' ? 'Recepcionado' : 'Procesado');
+
+const estadoClass = (estado) => (estado === 'recepcionado'
+    ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
+    : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300');
 
 const userLabel = (u) => {
     if (!u) return '—';
@@ -89,8 +111,10 @@ export default function Entry() {
     const [editing, setEditing] = useState(null);
     const [form, setForm] = useState(EMPTY);
     const [placaTouched, setPlacaTouched] = useState(false);
+    const [ticketTouched, setTicketTouched] = useState(false);
 
-    const isAdmin = user?.role === 'ADMIN';
+    const isPrivileged = ['ADMIN', 'JEFE'].includes(user?.role);
+    const ticketRequired = TICKET_ROLES.includes(user?.role);
     const today = todayLocal();
 
     useEffect(() => {
@@ -169,13 +193,14 @@ export default function Entry() {
         [catalog],
     );
 
-    const canEdit = (r) => isAdmin || r.userId === user?.id;
+    const canEdit = (r) => isPrivileged || r.userId === user?.id;
     const maxTipo = porTipo.reduce((max, item) => Math.max(max, item.total), 0) || 1;
 
     const openCreate = () => {
         setEditing(null);
         setForm({ ...EMPTY, date: today, serviceId: catalog[0]?.id ?? '' });
         setPlacaTouched(false);
+        setTicketTouched(false);
         setModalOpen(true);
     };
 
@@ -185,10 +210,13 @@ export default function Entry() {
             date: dayOf(r.date),
             serviceId: r.serviceId,
             placa: r.placa ?? '',
+            ticket: r.ticket ?? '',
+            estado: r.estado ?? 'procesado',
             observaciones: r.observaciones ?? '',
             activo: !!r.activo,
         });
         setPlacaTouched(false);
+        setTicketTouched(false);
         setModalOpen(true);
     };
 
@@ -228,6 +256,7 @@ export default function Entry() {
         e.preventDefault();
 
         const placa = sanitizePlaca(form.placa);
+        const ticket = sanitizeTicket(form.ticket);
         if (!form.date || !form.serviceId) {
             toastError('Seleccione la fecha y el tipo de trámite.');
             return;
@@ -242,23 +271,34 @@ export default function Entry() {
             toastError(PLACA_MESSAGE);
             return;
         }
+        if (ticketRequired && !ticket) {
+            setTicketTouched(true);
+            toastError('El número de ticket es obligatorio para su rol.');
+            return;
+        }
 
         const payload = {
             date: form.date,
             serviceId: form.serviceId,
             placa,
+            ticket: ticket || null,
+            estado: form.estado || 'procesado',
             observaciones: form.observaciones?.trim() || null,
             activo: !!form.activo,
         };
 
         setSaving(true);
         try {
+            let response;
             if (editing) {
-                await api.patch(`/tramites/${editing.id}`, payload);
+                response = await api.patch(`/tramites/${editing.id}`, payload);
                 toastSuccess('Registro actualizado.');
             } else {
-                await api.post('/tramites', payload);
+                response = await api.post('/tramites', payload);
                 toastSuccess('Trámite registrado.');
+            }
+            if (response?.data?.data?.advertencia) {
+                toastError(response.data.data.advertencia);
             }
             setModalOpen(false);
             setEditing(null);
@@ -336,6 +376,11 @@ export default function Entry() {
               : null
         : null;
 
+    const ticketValue = sanitizeTicket(form.ticket);
+    const ticketError = ticketTouched && ticketRequired && !ticketValue
+        ? 'El número de ticket es obligatorio para su rol.'
+        : null;
+
     const emptyMessage = total === 0
         ? search
             ? 'No hay registros que coincidan con la búsqueda.'
@@ -343,7 +388,7 @@ export default function Entry() {
         : 'No hay registros en esta página.';
 
     return (
-        <RoleGuard allowed={['OPERATOR_INGRESO', 'OPERATOR_ENTREGA', 'ADMIN']}>
+        <RoleGuard allowed={['OPERATOR_INGRESO', 'OPERATOR_ENTREGA', 'ADMIN', 'JEFE']}>
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start">
                 <div className="card space-y-4 p-4 sm:p-5 xl:col-span-2">
                     <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
@@ -406,7 +451,7 @@ export default function Entry() {
                                 value={searchInput}
                                 onChange={(e) => setSearchInput(e.target.value)}
                                 onClear={() => setSearchInput('')}
-                                placeholder="Tipo de trámite, placa/póliza, observaciones o usuario…"
+                                placeholder="Tipo de trámite, placa/póliza, ticket, estado, observaciones o usuario…"
                             />
                         </div>
                     </div>
@@ -414,25 +459,27 @@ export default function Entry() {
 
                 <div className="card overflow-hidden p-0">
                     <div className="hidden overflow-x-auto sm:block">
-                        <table className="table min-w-[820px]" aria-busy={loading}>
+                        <table className="table min-w-[1000px]" aria-busy={loading}>
                             <thead>
                                 <tr>
                                     <th>Fecha</th>
                                     <th>Hora</th>
                                     <th>Tipo de trámite</th>
                                     <th>Nro. placa / póliza</th>
+                                    <th>Ticket</th>
                                     <th>Observaciones</th>
-                                    {isAdmin && <th>Usuario</th>}
+                                    {isPrivileged && <th>Usuario</th>}
                                     <th>Estado</th>
+                                    <th>Activo</th>
                                     <th className="sticky right-0 z-10 bg-stone-100 dark:bg-wa-header" />
                                 </tr>
                             </thead>
                             <tbody className={loading ? 'opacity-60 transition-opacity' : ''}>
                                 {loading && records.length === 0 ? (
-                                    <tr><td colSpan={isAdmin ? 8 : 7} className="text-sm text-stone-500 dark:text-wa-muted">Cargando…</td></tr>
+                                    <tr><td colSpan={isPrivileged ? 10 : 9} className="text-sm text-stone-500 dark:text-wa-muted">Cargando…</td></tr>
                                 ) : records.length === 0 ? (
                                     <tr>
-                                        <td colSpan={isAdmin ? 8 : 7} className="text-sm text-stone-500 dark:text-wa-muted">
+                                        <td colSpan={isPrivileged ? 10 : 9} className="text-sm text-stone-500 dark:text-wa-muted">
                                             {total === 0
                                                 ? search
                                                     ? 'No hay registros que coincidan con la búsqueda.'
@@ -451,10 +498,16 @@ export default function Entry() {
                                             </span>
                                         </td>
                                         <td className="font-mono text-[13px] uppercase">{r.placa}</td>
+                                        <td className="font-mono text-[13px] uppercase">{r.ticket || '—'}</td>
                                         <td className="max-w-xs truncate text-[13px]" title={r.observaciones ?? ''}>{r.observaciones || '—'}</td>
-                                        {isAdmin && (
+                                        {isPrivileged && (
                                             <td className="text-[13px]">{userLabel(r.user)}</td>
                                         )}
+                                        <td>
+                                            <span className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ${estadoClass(r.estado)}`}>
+                                                {estadoLabel(r.estado)}
+                                            </span>
+                                        </td>
                                         <td>
                                             <span className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ${r.activo ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-stone-200 text-stone-600 dark:bg-white/10 dark:text-wa-muted'}`}>
                                                 {r.activo ? 'Activo' : 'Inactivo'}
@@ -495,7 +548,13 @@ export default function Entry() {
                                         <dt className="text-stone-500 dark:text-wa-muted">Placa/póliza:</dt>
                                         <dd className="font-mono uppercase">{r.placa}</dd>
                                     </div>
-                                    {isAdmin && (
+                                    {r.ticket && (
+                                        <div className="flex gap-1">
+                                            <dt className="text-stone-500 dark:text-wa-muted">Ticket:</dt>
+                                            <dd className="font-mono uppercase">{r.ticket}</dd>
+                                        </div>
+                                    )}
+                                    {isPrivileged && (
                                         <div className="flex gap-1">
                                             <dt className="text-stone-500 dark:text-wa-muted">Usuario:</dt>
                                             <dd className="min-w-0 truncate">{userLabel(r.user)}</dd>
@@ -510,8 +569,13 @@ export default function Entry() {
                                 </dl>
 
                                 <div className="mt-2 flex items-center justify-between gap-2 border-t border-stone-100 pt-2 dark:border-white/10">
-                                    <span className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ${r.service?.type === 'ENTREGA' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300'}`}>
-                                        {typeLabel(r.service?.type)}
+                                    <span className="flex flex-wrap items-center gap-1">
+                                        <span className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ${r.service?.type === 'ENTREGA' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300'}`}>
+                                            {typeLabel(r.service?.type)}
+                                        </span>
+                                        <span className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ${estadoClass(r.estado)}`}>
+                                            {estadoLabel(r.estado)}
+                                        </span>
                                     </span>
                                     {rowActions(r)}
                                 </div>
@@ -647,6 +711,27 @@ export default function Entry() {
                         }
                         onBlur={() => setPlacaTouched(true)}
                         onChange={(e) => setForm({ ...form, placa: sanitizePlaca(e.target.value) })}
+                    />
+                    <Input
+                        label="Nro. de ticket"
+                        value={form.ticket}
+                        placeholder="Ej. A1234567"
+                        maxLength={8}
+                        required={ticketRequired}
+                        error={ticketError}
+                        helperText={
+                            ticketRequired
+                                ? 'Obligatorio para su rol. Alfanumérico, máximo 8 caracteres.'
+                                : 'Opcional. Alfanumérico, máximo 8 caracteres.'
+                        }
+                        onBlur={() => setTicketTouched(true)}
+                        onChange={(e) => setForm({ ...form, ticket: sanitizeTicket(e.target.value) })}
+                    />
+                    <Select
+                        label="Estado"
+                        value={form.estado}
+                        options={ESTADO_OPTIONS}
+                        onChange={(e) => setForm({ ...form, estado: e.target.value })}
                     />
                     <label className="block">
                         <span className="mb-1 block text-sm font-medium">Observaciones</span>

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\HasMongoId;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -11,10 +12,17 @@ use Illuminate\Database\Eloquent\Model;
  */
 class TramiteRegistro extends Model
 {
-    use HasMongoId;
+    use HasMongoId, HasFactory;
 
     protected $fillable = [
-        'userId', 'serviceId', 'date', 'placa', 'observaciones', 'activo',
+        'userId',
+        'serviceId',
+        'date',
+        'placa',
+        'observaciones',
+        'activo',
+        'ticket',
+        'estado',
     ];
 
     protected function casts(): array

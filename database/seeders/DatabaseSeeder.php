@@ -21,7 +21,7 @@ class DatabaseSeeder extends Seeder
             UsersSeeder::class,
             ServicesSeeder::class,
             TemplatesSeeder::class,
-            // EntriesSeeder::class,
+            TramiteRegistroSeeder::class,
         ]);
     }
 

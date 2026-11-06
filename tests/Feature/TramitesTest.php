@@ -60,13 +60,13 @@ class TramitesTest extends TestCase
 
         $first = $auth()->postJson('/api/tramites', [
             'date' => $today, 'serviceId' => $this->ingId,
-            'placa' => '123abc', 'observaciones' => 'primero',
+            'placa' => '123abc', 'ticket' => 'T1', 'observaciones' => 'primero',
         ])->assertCreated();
         $this->assertEquals('123ABC', $first->json('data.placa'));
         $this->assertTrue($first->json('data.activo'));
 
         $second = $auth()->postJson('/api/tramites', [
-            'date' => $today, 'serviceId' => $this->ingId, 'placa' => '999ZZZ',
+            'date' => $today, 'serviceId' => $this->ingId, 'placa' => '999ZZZ', 'ticket' => 'T2',
         ])->assertCreated();
 
         // created_at descendente.
@@ -85,6 +85,69 @@ class TramitesTest extends TestCase
             ->assertOk()->assertJsonCount(2, 'data');
     }
 
+    public function test_ticket_y_estado(): void
+    {
+        $op = $this->makeUser('ing1', 'OPERATOR_INGRESO');
+        $admin = $this->makeUser('admin1', 'ADMIN');
+        $jefe = $this->makeUser('jefe1', 'JEFE');
+        $today = now('UTC')->toDateString();
+
+        // Ticket obligatorio para operadores.
+        $this->actingAs($op, 'sanctum')->postJson('/api/tramites', [
+            'date' => $today, 'serviceId' => $this->ingId, 'placa' => '123ABC',
+        ])->assertStatus(422);
+
+        // Ticket alfanumérico, normalizado a mayúsculas.
+        $created = $this->actingAs($op, 'sanctum')->postJson('/api/tramites', [
+            'date' => $today, 'serviceId' => $this->ingId, 'placa' => '123ABC',
+            'ticket' => ' ab12cd ',
+        ])->assertCreated();
+        $this->assertSame('AB12CD', $created->json('data.ticket'));
+        $this->assertSame('procesado', $created->json('data.estado'));
+
+        // Ticket inválido (con caracteres no alfanuméricos).
+        $this->actingAs($op, 'sanctum')->postJson('/api/tramites', [
+            'date' => $today, 'serviceId' => $this->ingId, 'placa' => '124ABC',
+            'ticket' => 'AB-12',
+        ])->assertStatus(400);
+
+        // Duplicado: solo advierte.
+        $duplicated = $this->actingAs($op, 'sanctum')->postJson('/api/tramites', [
+            'date' => $today, 'serviceId' => $this->ingId, 'placa' => '125ABC',
+            'ticket' => 'AB12CD',
+        ])->assertCreated();
+        $this->assertNotNull($duplicated->json('data.advertencia'));
+
+        // Estado explícito y validación.
+        $received = $this->actingAs($op, 'sanctum')->postJson('/api/tramites', [
+            'date' => $today, 'serviceId' => $this->ingId, 'placa' => '126ABC',
+            'ticket' => 'AB12CE', 'estado' => 'recepcionado',
+        ])->assertCreated();
+        $this->assertSame('recepcionado', $received->json('data.estado'));
+
+        $this->actingAs($op, 'sanctum')->postJson('/api/tramites', [
+            'date' => $today, 'serviceId' => $this->ingId, 'placa' => '127ABC',
+            'ticket' => 'AB12CF', 'estado' => 'otro',
+        ])->assertStatus(400);
+
+        // Ticket opcional para ADMIN y JEFE.
+        $this->actingAs($admin, 'sanctum')->postJson('/api/tramites', [
+            'date' => $today, 'serviceId' => $this->ingId, 'placa' => '128ABC',
+        ])->assertCreated()->assertJsonPath('data.ticket', null);
+
+        $this->actingAs($jefe, 'sanctum')->postJson('/api/tramites', [
+            'date' => $today, 'serviceId' => $this->ingId, 'placa' => '129ABC',
+        ])->assertCreated()->assertJsonPath('data.ticket', null);
+
+        // Búsqueda por ticket y estado.
+        $this->actingAs($jefe, 'sanctum')
+            ->getJson("/api/tramites?from={$today}&to={$today}&search=AB12CD")
+            ->assertOk()->assertJsonCount(2, 'data');
+        $this->actingAs($jefe, 'sanctum')
+            ->getJson("/api/tramites?from={$today}&to={$today}&search=recepcionado")
+            ->assertOk()->assertJsonCount(1, 'data');
+    }
+
     public function test_validaciones_rol_fechas_y_placa(): void
     {
         $op = $this->makeUser('ing1', 'OPERATOR_INGRESO');
@@ -95,36 +158,41 @@ class TramitesTest extends TestCase
 
         // Placa con espacios / vacía.
         $auth()->postJson('/api/tramites', [
-            'date' => $today, 'serviceId' => $this->ingId, 'placa' => 'AB 123',
+            'date' => $today, 'serviceId' => $this->ingId, 'placa' => 'AB 123', 'ticket' => 'T3',
         ])->assertStatus(400);
         $auth()->postJson('/api/tramites', [
             'date' => $today, 'serviceId' => $this->ingId,
         ])->assertStatus(400);
 
+        // Ticket obligatorio para operadores.
+        $auth()->postJson('/api/tramites', [
+            'date' => $today, 'serviceId' => $this->ingId, 'placa' => '123ABC',
+        ])->assertStatus(422);
+
         // Fecha futura bloqueada.
         $auth()->postJson('/api/tramites', [
-            'date' => $future, 'serviceId' => $this->ingId, 'placa' => '123ABC',
+            'date' => $future, 'serviceId' => $this->ingId, 'placa' => '123ABC', 'ticket' => 'T4',
         ])->assertStatus(403);
 
         // Rol incorrecto para el tipo de trámite.
         $auth()->postJson('/api/tramites', [
-            'date' => $today, 'serviceId' => $this->entId, 'placa' => '123ABC',
+            'date' => $today, 'serviceId' => $this->entId, 'placa' => '123ABC', 'ticket' => 'T5',
         ])->assertStatus(403);
 
         // Fecha pasada: permitida por defecto, bloqueada sin canBackfill.
         $auth()->postJson('/api/tramites', [
-            'date' => $past, 'serviceId' => $this->ingId, 'placa' => '123PAS',
+            'date' => $past, 'serviceId' => $this->ingId, 'placa' => '123PAS', 'ticket' => 'T6',
         ])->assertCreated();
 
         $op->update(['canBackfill' => false]);
         $auth()->postJson('/api/tramites', [
-            'date' => $past, 'serviceId' => $this->ingId, 'placa' => '124PAS',
+            'date' => $past, 'serviceId' => $this->ingId, 'placa' => '124PAS', 'ticket' => 'T7',
         ])->assertStatus(403);
 
         // Servicio inactivo.
         Service::whereKey($this->ingId)->update(['isActive' => false]);
         $auth()->postJson('/api/tramites', [
-            'date' => $today, 'serviceId' => $this->ingId, 'placa' => '123ABC',
+            'date' => $today, 'serviceId' => $this->ingId, 'placa' => '123ABC', 'ticket' => 'T8',
         ])->assertStatus(400);
     }
 
@@ -135,9 +203,9 @@ class TramitesTest extends TestCase
         $today = now('UTC')->toDateString();
 
         // Placa: 3 o 4 dígitos + 3 letras. Póliza: 5 a 10 dígitos.
-        foreach (['123ABC', '1234ABC', '123abc', '12345', '123456789', '0123456789'] as $placa) {
+        foreach (['123ABC', '1234ABC', '123abc', '12345', '123456789', '0123456789'] as $i => $placa) {
             $auth()->postJson('/api/tramites', [
-                'date' => $today, 'serviceId' => $this->ingId, 'placa' => $placa,
+                'date' => $today, 'serviceId' => $this->ingId, 'placa' => $placa, 'ticket' => 'F'.$i,
             ])->assertCreated();
         }
 
@@ -150,7 +218,7 @@ class TramitesTest extends TestCase
 
         // La edición aplica las mismas reglas.
         $row = $auth()->postJson('/api/tramites', [
-            'date' => $today, 'serviceId' => $this->ingId, 'placa' => '111AAA',
+            'date' => $today, 'serviceId' => $this->ingId, 'placa' => '111AAA', 'ticket' => 'F9',
         ])->assertCreated();
         $id = $row->json('data.id');
 
@@ -385,6 +453,8 @@ class TramitesTest extends TestCase
             'serviceId' => $this->ingId,
             'date' => now('UTC')->startOfDay(),
             'placa' => '111AAA',
+            'ticket' => 'TK1',
+            'estado' => 'recepcionado',
             'observaciones' => 'exportable',
             'activo' => true,
         ]);
@@ -419,7 +489,8 @@ class TramitesTest extends TestCase
 
         TramiteRegistro::create([
             'userId' => $op1->id, 'serviceId' => $this->ingId, 'date' => $day,
-            'placa' => '111AAA', 'observaciones' => 'solo propio', 'activo' => true,
+            'placa' => '111AAA', 'ticket' => 'TK1', 'estado' => 'recepcionado',
+            'observaciones' => 'solo propio', 'activo' => true,
         ]);
         TramiteRegistro::create([
             'userId' => $op2->id, 'serviceId' => $this->ingId, 'date' => $day,
@@ -435,6 +506,11 @@ class TramitesTest extends TestCase
         $ownSheet = IOFactory::load($ownPath)->getActiveSheet();
         $this->assertSame('REPORTE DE REGISTRO DE TRÁMITES', $ownSheet->getCell('A1')->getValue());
         $this->assertSame('111AAA', $ownSheet->getCell('D9')->getValue());
+        $this->assertSame('Ticket', $ownSheet->getCell('E8')->getValue());
+        $this->assertSame('TK1', $ownSheet->getCell('E9')->getValue());
+        $this->assertSame('Estado', $ownSheet->getCell('H8')->getValue());
+        $this->assertSame('Recepcionado', $ownSheet->getCell('H9')->getValue());
+        $this->assertSame('Activo', $ownSheet->getCell('I8')->getValue());
         $this->assertSame(9, $ownSheet->getHighestDataRow());
 
         $pageSetup = $ownSheet->getPageSetup();
@@ -466,7 +542,7 @@ class TramitesTest extends TestCase
         $today = now('UTC')->toDateString();
 
         $row = $this->actingAs($owner, 'sanctum')->postJson('/api/tramites', [
-            'date' => $today, 'serviceId' => $this->ingId, 'placa' => '123ABC',
+            'date' => $today, 'serviceId' => $this->ingId, 'placa' => '123ABC', 'ticket' => 'E1',
         ])->assertCreated();
         $id = $row->json('data.id');
 
@@ -491,17 +567,20 @@ class TramitesTest extends TestCase
         $op1 = $this->makeUser('ing1', 'OPERATOR_INGRESO');
         $op2 = $this->makeUser('ing2', 'OPERATOR_INGRESO');
         $admin = $this->makeUser('admin1', 'ADMIN');
+        $jefe = $this->makeUser('jefe1', 'JEFE');
         $today = now('UTC')->toDateString();
 
-        foreach ([[$op1, '111AAA'], [$op2, '222BBB']] as [$op, $placa]) {
+        foreach ([[$op1, '111AAA', 'D1'], [$op2, '222BBB', 'D2']] as [$op, $placa, $ticket]) {
             $this->actingAs($op, 'sanctum')->postJson('/api/tramites', [
-                'date' => $today, 'serviceId' => $this->ingId, 'placa' => $placa,
+                'date' => $today, 'serviceId' => $this->ingId, 'placa' => $placa, 'ticket' => $ticket,
             ])->assertCreated();
         }
 
         $this->actingAs($op1, 'sanctum')->getJson("/api/tramites?date={$today}")
             ->assertOk()->assertJsonCount(1, 'data');
         $this->actingAs($admin, 'sanctum')->getJson("/api/tramites?date={$today}")
+            ->assertOk()->assertJsonCount(2, 'data');
+        $this->actingAs($jefe, 'sanctum')->getJson("/api/tramites?date={$today}")
             ->assertOk()->assertJsonCount(2, 'data');
     }
 
