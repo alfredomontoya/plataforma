@@ -248,6 +248,8 @@ export default function Dashboard() {
         dir: -1,
     });
 
+    const [totalKind, setTotalKind] = useState('ingreso');
+
     const [oSort, setOSort] = useState({
         key: 'total',
         dir: -1,
@@ -501,8 +503,8 @@ export default function Dashboard() {
             });
         }
 
-        // Gráficos del total diario.
-        const tRows = tItems.filter(
+        // Gráficos del total diario (siempre ingreso, independiente del selector visual).
+        const tRows = ingresoItems.filter(
             (i) => Number(i.total) > 0
         );
 
@@ -966,12 +968,16 @@ export default function Dashboard() {
             entrega:
                 acc.entrega + (Number(o.entrega) || 0),
 
+            cierre:
+                acc.cierre + (Number(o.cierre) || 0),
+
             total:
                 acc.total + (Number(o.total) || 0),
         }),
         {
             ingreso: 0,
             entrega: 0,
+            cierre: 0,
             total: 0,
         }
     );
@@ -983,7 +989,19 @@ export default function Dashboard() {
     // INGRESO TOTAL DIARIO
     // --------------------------------------------------
 
-    const tItems = totals?.byTramite || [];
+    const ingresoItems = totals?.byTramite || [];
+    const entregaItems = totals?.byTramiteEntrega || [];
+    const cierreItems = totals?.byTramiteCierre || [];
+    const tItems = totalKind === 'entrega'
+        ? entregaItems
+        : totalKind === 'cierre'
+            ? cierreItems
+            : ingresoItems;
+    const totalsKindLabel = totalKind === 'entrega'
+        ? 'Entrega'
+        : totalKind === 'cierre'
+            ? 'Cierre'
+            : 'Ingreso';
 
     const toggleTSort = (key) => {
         setTSort((s) => (
@@ -1133,7 +1151,7 @@ export default function Dashboard() {
                     2. INDICADORES KPI
                 ====================================== */}
 
-                <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                     <KpiCard
                         title="Total Ingreso"
                         value={totals?.total ?? 0}
@@ -1142,9 +1160,16 @@ export default function Dashboard() {
                     />
 
                     <KpiCard
-                        title="Trámites"
-                        value={tItems.length}
+                        title="Total Entrega"
+                        value={data?.totalEntrega ?? 0}
                         color="green"
+                        icon={ArrowUpTrayIcon}
+                    />
+
+                    <KpiCard
+                        title="Total Cierre"
+                        value={totals?.totalCierre ?? 0}
+                        color="purple"
                         icon={DocumentChartBarIcon}
                     />
 
@@ -1154,6 +1179,43 @@ export default function Dashboard() {
                         color="orange"
                         icon={UserGroupIcon}
                     />
+                </div>
+
+                {/* ======================================
+                    2b. ÍTEMS DE ENTREGA DEL PERIODO
+                ====================================== */}
+
+                <div className="card p-4">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                            <h3 className="font-semibold">Ítems de entrega</h3>
+                            <p className="text-xs text-stone-500 dark:text-wa-muted">
+                                {subtitle} · cantidades entregadas
+                            </p>
+                        </div>
+                    </div>
+
+                    {(data?.entregaItems ?? []).length === 0 ? (
+                        <p className="text-sm text-stone-500 dark:text-wa-muted">
+                            Sin ítems entregados en el periodo.
+                        </p>
+                    ) : (
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                            {(data?.entregaItems ?? []).map((item) => (
+                                <div
+                                    key={item.itemId}
+                                    className="rounded-lg border border-stone-200 p-3 dark:border-white/10"
+                                >
+                                    <div className="text-xs text-stone-500 dark:text-wa-muted">
+                                        {item.name}
+                                    </div>
+                                    <div className="mt-1 text-2xl font-bold tabular-nums">
+                                        {item.total}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* ======================================
@@ -1213,6 +1275,14 @@ export default function Dashboard() {
                                                 (o) => o.entrega
                                             ),
                                             color: '#16a34a',
+                                            stackId: 'total',
+                                        },
+                                        {
+                                            label: 'Cierre',
+                                            data: sortedOperators.map(
+                                                (o) => o.cierre
+                                            ),
+                                            color: '#f59e0b',
                                             stackId: 'total',
                                         },
                                     ]}
@@ -1277,6 +1347,14 @@ export default function Dashboard() {
 
                                                 <th
                                                     className="sticky top-0 z-10 cursor-pointer select-none bg-stone-100 text-right dark:bg-wa-header"
+                                                    onClick={() => toggleOSort('cierre')}
+                                                    title="Ordenar"
+                                                >
+                                                    Cie.{oSortArrow('cierre')}
+                                                </th>
+
+                                                <th
+                                                    className="sticky top-0 z-10 cursor-pointer select-none bg-stone-100 text-right dark:bg-wa-header"
                                                     onClick={() => toggleOSort('total')}
                                                     title="Ordenar"
                                                 >
@@ -1310,6 +1388,10 @@ export default function Dashboard() {
                                                         {o.entrega}
                                                     </td>
 
+                                                    <td className="text-right tabular-nums">
+                                                        {o.cierre}
+                                                    </td>
+
                                                     <td className="text-right font-semibold tabular-nums">
                                                         {o.total}
                                                     </td>
@@ -1329,6 +1411,10 @@ export default function Dashboard() {
 
                                                 <td className="text-right tabular-nums">
                                                     {operatorTotals.entrega}
+                                                </td>
+
+                                                <td className="text-right tabular-nums">
+                                                    {operatorTotals.cierre}
                                                 </td>
 
                                                 <td className="text-right tabular-nums">
@@ -1360,6 +1446,7 @@ export default function Dashboard() {
                                             <option value="total">Total</option>
                                             <option value="ingreso">Ingreso</option>
                                             <option value="entrega">Entrega</option>
+                                            <option value="cierre">Cierre</option>
                                             <option value="username">Operador</option>
                                             <option value="role">Rol</option>
                                         </select>
@@ -1428,6 +1515,16 @@ export default function Dashboard() {
 
                                                 <dd className="font-medium tabular-nums">
                                                     {o.entrega}
+                                                </dd>
+                                            </div>
+
+                                            <div className="flex justify-between gap-2">
+                                                <dt className="text-stone-500 dark:text-wa-muted">
+                                                    Cierre
+                                                </dt>
+
+                                                <dd className="font-medium tabular-nums">
+                                                    {o.cierre}
                                                 </dd>
                                             </div>
                                         </dl>
@@ -1532,7 +1629,7 @@ export default function Dashboard() {
                 )}
 
                 {/* ======================================
-                    6. INGRESO TOTAL DIARIO
+                    6. TOTAL DIARIO (INGRESO / CIERRE)
                 ====================================== */}
 
                 <div className="card space-y-5 p-4">
@@ -1542,7 +1639,7 @@ export default function Dashboard() {
                     <div className="flex flex-wrap items-center gap-3">
                         <div>
                             <h3 className="font-semibold">
-                                Ingreso total diario
+                                Ingreso, entrega y cierre total diario
                             </h3>
 
                             <p className="text-sm text-stone-500 dark:text-wa-muted">
@@ -1550,9 +1647,44 @@ export default function Dashboard() {
                             </p>
                         </div>
 
-                        <span className="ml-auto rounded-lg bg-purple-600 px-3 py-1 text-sm font-bold text-white">
-                            Total: {totals?.total ?? 0}
+                        <div className="ml-auto flex flex-wrap items-center gap-2">
+                            <span className="rounded-lg bg-purple-600 px-3 py-1 text-sm font-bold text-white">
+                                Ingreso: {totals?.total ?? 0}
+                            </span>
+
+                            <span className="rounded-lg bg-green-600 px-3 py-1 text-sm font-bold text-white">
+                                Entrega: {totals?.totalEntrega ?? 0}
+                            </span>
+
+                            <span className="rounded-lg bg-amber-500 px-3 py-1 text-sm font-bold text-white">
+                                Cierre: {totals?.totalCierre ?? 0}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-medium text-stone-500 dark:text-wa-muted">
+                            Ver:
                         </span>
+
+                        {[
+                            { value: 'ingreso', label: 'Ingreso' },
+                            { value: 'entrega', label: 'Entrega' },
+                            { value: 'cierre', label: 'Cierre' },
+                        ].map((o) => (
+                            <Button
+                                key={o.value}
+                                size="sm"
+                                variant={
+                                    totalKind === o.value
+                                        ? 'primary'
+                                        : 'secondary'
+                                }
+                                onClick={() => setTotalKind(o.value)}
+                            >
+                                {o.label}
+                            </Button>
+                        ))}
                     </div>
 
                     {/* GRÁFICOS: DISTRIBUCIÓN Y BARRAS */}
@@ -1561,7 +1693,7 @@ export default function Dashboard() {
 
                         <div className="card min-w-0 p-4">
                             <h4 className="mb-2 text-sm font-semibold">
-                                Distribución por trámite
+                                Distribución por trámite · {totalsKindLabel}
                                 {totalsRange ? ` · ${totalsRange}` : ''}
                             </h4>
 
@@ -1581,7 +1713,7 @@ export default function Dashboard() {
 
                         <div className="card min-w-0 p-4">
                             <h4 className="mb-2 text-sm font-semibold">
-                                Total por trámite
+                                Total por trámite · {totalsKindLabel}
                                 {totalsRange ? ` · ${totalsRange}` : ''}
                             </h4>
 
@@ -1622,7 +1754,7 @@ export default function Dashboard() {
 
                     <div>
                         <h4 className="mb-2 text-sm font-semibold">
-                            Tendencia día a día – Total
+                            Tendencia día a día – Ingreso, entrega y cierre
                             {totalsTrendRange
                                 ? ` · ${totalsTrendRange}`
                                 : ''}
@@ -1643,8 +1775,18 @@ export default function Dashboard() {
                                         series={[
                                             {
                                                 key: 'total',
-                                                name: 'Total',
+                                                name: 'Ingreso',
                                                 color: '#9333ea',
+                                            },
+                                            {
+                                                key: 'entrega',
+                                                name: 'Entrega',
+                                                color: '#16a34a',
+                                            },
+                                            {
+                                                key: 'cierre',
+                                                name: 'Cierre',
+                                                color: '#f59e0b',
                                             },
                                         ]}
                                         xLabel="fecha"

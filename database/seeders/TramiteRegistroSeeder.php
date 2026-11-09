@@ -2,6 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Models\EntregaItem;
+use App\Models\TipoRegistro;
 use App\Models\TramiteRegistro;
 use Illuminate\Database\Seeder;
 
@@ -35,15 +37,29 @@ class TramiteRegistroSeeder extends Seeder
             ['2026-11-05', '5021XFF', 'a solicitud de ydderf velazco, sinficha'],
         ];
 
-        foreach ($registros as [$fecha, $placa, $observaciones]) {
-            TramiteRegistro::factory()->create([
-                'date' => $fecha . ' 00:00:00',
+        $tipoIngreso = TipoRegistro::where('codigo', TipoRegistro::CODE_INGRESO)->value('id');
+        $tipoEntrega = TipoRegistro::where('codigo', TipoRegistro::CODE_ENTREGA)->value('id');
+        $items = EntregaItem::where('isActive', true)->get();
+
+        foreach ($registros as $index => [$fecha, $placa, $observaciones]) {
+            $esEntrega = $index % 2 === 0;
+            $tipoId = $esEntrega ? $tipoEntrega : $tipoIngreso;
+
+            $registro = TramiteRegistro::factory()->create([
+                'date' => $fecha.' 00:00:00',
                 'placa' => $placa,
                 'observaciones' => $observaciones,
                 'ticket' => null,
                 'estado' => 'procesado',
                 'activo' => true,
+                'tipoRegistroId' => $tipoId,
             ]);
+
+            if ($esEntrega && $items->isNotEmpty()) {
+                $registro->entregaItems()->sync(
+                    $items->random(min(2, $items->count()))->pluck('id')->all()
+                );
+            }
         }
     }
 }

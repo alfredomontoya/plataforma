@@ -30,4 +30,15 @@ class Service extends Model
     {
         return $this->hasMany(TramiteRegistro::class, 'serviceId');
     }
+
+    /** Ítems de entrega permitidos para este trámite. */
+    public function entregaItems()
+    {
+        return $this->belongsToMany(
+            EntregaItem::class,
+            'service_entrega_items',
+            'serviceId',
+            'entregaItemId',
+        );
+    }
 }

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Service;
+use App\Models\TipoRegistro;
 use App\Models\TramiteRegistro;
 use App\Models\User;
 use App\Services\UserService;
@@ -53,6 +54,28 @@ class DashboardReportsTest extends TestCase
         }
     }
 
+    private function seedCierre(string $day, int $qty): void
+    {
+        $op = User::where('username', 'ing1')->first()
+            ?? app(UserService::class)->create([
+                'username' => 'ing1', 'password' => 'password', 'role' => 'OPERATOR_INGRESO',
+                'firstName' => 'I', 'lastName' => 'U',
+            ]);
+        $service = Service::firstOrCreate(['name' => 'SERV ING'], ['abreviation' => 'SI', 'type' => 'INGRESO', 'isActive' => true, 'sortOrder' => 1]);
+        $tipoId = TipoRegistro::where('codigo', 'CIERRE')->value('id');
+
+        for ($i = 1; $i <= $qty; $i++) {
+            TramiteRegistro::create([
+                'userId' => $op->id,
+                'serviceId' => $service->id,
+                'tipoRegistroId' => $tipoId,
+                'date' => Carbon::parse($day, 'UTC'),
+                'placa' => sprintf('CIE%05d', $i),
+                'activo' => true,
+            ]);
+        }
+    }
+
     private function jefe()
     {
         return app(UserService::class)->create([
@@ -68,11 +91,15 @@ class DashboardReportsTest extends TestCase
         $yesterday = now('UTC')->subDay()->toDateString();
         $this->seedDay($today, 10, 4);
         $this->seedDay($yesterday, 5, 4);
+        $this->seedCierre($today, 3);
+        $this->seedCierre($yesterday, 1);
 
         $res = $this->actingAs($jefe, 'sanctum')->getJson("/api/reports/dashboard/summary?date={$today}");
         $res->assertOk()->assertJson(['success' => true]);
         $this->assertEquals(10, $res->json('data.totalIngreso'));
         $this->assertEquals(4, $res->json('data.totalEntrega'));
+        $this->assertEquals(3, $res->json('data.totalCierre'));
+        $this->assertEquals(1, $res->json('data.cierrePrevious.0.total'));
         $this->assertCount(2, $res->json('data.operators'));
         $this->assertEquals('SI', $res->json('data.ingreso.0.abreviation'));
         // Contrato: total numérico (MySQL devuelve SUM() como string).
@@ -86,6 +113,8 @@ class DashboardReportsTest extends TestCase
         $yesterday = now('UTC')->subDay()->toDateString();
         $this->seedDay($today, 10, 4);
         $this->seedDay($yesterday, 5, 2);
+        $this->seedCierre($today, 3);
+        $this->seedCierre($yesterday, 1);
 
         $res = $this->actingAs($jefe, 'sanctum')->getJson("/api/reports/dashboard/daily?from={$yesterday}&to={$today}");
         $res->assertOk();
@@ -93,7 +122,9 @@ class DashboardReportsTest extends TestCase
         $this->assertEquals($yesterday, $res->json('data.0.date'));
         $this->assertEquals(5, $res->json('data.0.ingreso'));
         $this->assertEquals(2, $res->json('data.0.entrega'));
+        $this->assertEquals(1, $res->json('data.0.cierre'));
         $this->assertEquals(10, $res->json('data.1.ingreso'));
+        $this->assertEquals(3, $res->json('data.1.cierre'));
         $this->assertIsInt($res->json('data.1.ingreso'));
         // rango inválido (fin antes que inicio)
         $this->actingAs($jefe, 'sanctum')->getJson("/api/reports/dashboard/daily?from={$today}&to={$yesterday}")->assertStatus(400);
@@ -104,13 +135,17 @@ class DashboardReportsTest extends TestCase
         $jefe = $this->jefe();
         $monday = now('UTC')->startOfWeek(Carbon::MONDAY)->toDateString();
         $this->seedDay($monday, 6, 2);
+        $this->seedCierre($monday, 2);
 
         $w = $this->actingAs($jefe, 'sanctum')->getJson("/api/reports/dashboard/weekly?weekStart={$monday}");
         $w->assertOk();
         $this->assertEquals(6, $w->json('data.totalIngreso'));
+        $this->assertEquals(2, $w->json('data.totalCierre'));
         // Desglose por servicio también en semana (tortas visibles fuera del día).
         $this->assertEquals('SI', $w->json('data.ingresoByService.0.abreviation'));
         $this->assertEquals(6, $w->json('data.ingresoByService.0.total'));
+        $this->assertEquals('SI', $w->json('data.cierreByService.0.abreviation'));
+        $this->assertEquals(2, $w->json('data.cierreByService.0.total'));
 
         $from = now('UTC')->subDays(100)->toDateString();
         $to = now('UTC')->toDateString();

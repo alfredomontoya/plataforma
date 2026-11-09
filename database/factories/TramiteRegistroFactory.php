@@ -19,7 +19,7 @@ class TramiteRegistroFactory extends Factory
                 ?? User::factory(),
 
             'serviceId' => fn () =>
-                Service::query()->inRandomOrder()->value('id')
+                Service::query()->where('isActive', true)->inRandomOrder()->value('id')
                 ?? Service::factory(),
 
             'date' => fake()->dateTimeBetween('-30 days', 'now'),

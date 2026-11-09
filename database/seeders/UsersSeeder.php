@@ -5,49 +5,77 @@ namespace Database\Seeders;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 
-/**
- * 10 usuarios base fijos (sin aleatorios):
- * admin (ADMIN), jefe (JEFE) + 8 operadores (username = inicial del nombre + apellido).
- * Todos con password `password`. Idempotente: no duplica por username.
- *
- * El título académico y el historial de cargos ya no viven en `users`: se
- * movieron al módulo de RRHH (`tratamientos` → `empleados` → `empleado_puestos`
- * → `puestos`). Estas cuentas de sistema se siembran sin vínculo a empleado
- * (`empleadoId` es nullable), por lo que no se asignan títulos aquí.
- *
- * Todos los usuarios sembrados quedan con canBackfill habilitado por defecto
- * (pueden registrar fechas pasadas). El permiso es persistente y un ADMIN
- * puede desactivarlo por usuario.
- */
 class UsersSeeder extends Seeder
 {
     public function run(): void
     {
         if (! DatabaseSeeder::destructiveAllowed()) {
-            $this->command?->warn('UsersSeeder omitido: no se siembran usuarios demo en producción.');
+            $this->command?->warn(
+                'UsersSeeder omitido: no se siembran usuarios demo en producción.'
+            );
 
             return;
         }
 
         $base = [
-            ['admin', 'ADMIN', 'Admin', 'Sistema'],
-            ['chuachumanca', 'JEFE', 'Claudia', 'Chuachumanca'],
-            ['jcamacho', 'OPERATOR_INGRESO', 'Jaime', 'Camacho'],
-            ['jcarreno', 'OPERATOR_INGRESO', 'Jose Ernesto', 'Carreno'],
-            ['arodriguez', 'OPERATOR_INGRESO', 'Alfredo', 'Rodriguez'],
-            ['rsuarez', 'OPERATOR_ENTREGA', 'Robin', 'Suarez'],
-            ['yvelazco', 'JEFE', 'Yderf', 'Velazco'],
-            ['gchoque', 'OPERATOR_INGRESO', 'Gonzalo', 'Choque'],
-            ['rflores', 'OPERATOR_ENTREGA', 'Rosa', 'Flores'],
-            ['cvargas', 'OPERATOR_ENTREGA', 'Carmen', 'Vargas'],
+            // username, role, firstName, lastName, paternalSurname, maternalSurname
+
+            ['arodriguez', 'OPERATOR_INGRESO', 'Alfredo', 'Rodriguez', 'Maldonado', null],
+            ['rsuarez', 'OPERATOR_INGRESO', 'Robin', 'Suarez', 'Ribera', null],
+            ['bayllon', 'OPERATOR_INGRESO', 'Beymar Fernando', 'Ayllon', 'Camacho', null],
+            ['srojas', 'OPERATOR_INGRESO', 'Sandra', 'Rojas', 'Arteaga', null],
+
+            ['vmelgar', 'OPERATOR_INGRESO', 'Virginia', 'Melgar', 'Ambló', null],
+            ['alopez', 'OPERATOR_INGRESO', 'Angela', 'Lopez', 'Duran', null],
+
+            ['jcamacho', 'OPERATOR_INGRESO', 'Jaime', 'Camacho', 'Mosa', null],
+            ['gchoque', 'OPERATOR_INGRESO', 'Gonzalo', 'Choque', 'Ayala', null],
+
+            ['esalvatierra', 'OPERATOR_ENTREGA', 'Erwin', 'Salvatierra', 'Abdalla', null],
+            ['jcarreno', 'OPERATOR_ENTREGA', 'Jose Ernesto', 'Carreño', 'Gutierrez', null],
+
+            ['gcoca', 'OPERATOR_INGRESO', 'Guery Rolando', 'Coca', 'Velasco', null],
+
+            ['chuachumanca', 'ADMIN', 'Claudia', 'Huachumanca', 'Changaray', null],
+
+            ['rmacabapi', 'OPERATOR_INGRESO', 'Regina', 'Macabapi', 'Teco', null],
+            ['kjaldin', 'OPERATOR_INGRESO', 'Kelly Yerline', 'Jaldin', 'Mendoza', null],
+            ['jcarvajal', 'OPERATOR_INGRESO', 'Julio Cesar', 'Carvajal', null, null],
+            ['plopez', 'OPERATOR_INGRESO', 'Pedro Luis', 'Lopez', 'Moreno', null],
+
+            ['jsempertegui', 'OPERATOR_INGRESO', 'Jose Luis', 'Sempertegui', 'Noriega', null],
+
+            ['gpastora', 'OPERATOR_INGRESO', 'Gabriela', 'Pastora', 'Tellez', null],
+            ['erojas', 'OPERATOR_INGRESO', 'Ernestina', 'Rojas', 'Morales', null],
+            ['rclaure', 'OPERATOR_INGRESO', 'Rebeca', 'Claure', 'Linarez', null],
+
+            ['jramos', 'OPERATOR_INGRESO', 'Jhonatan Gabriel', 'Ramos', null, null],
+            ['lflorida', 'OPERATOR_ENTREGA', 'Laura', 'Florida', null, null],
+
+            ['yvelazco', 'JEFE', 'Ydderf', 'Velasco', 'Cespedes', null],
         ];
 
-        foreach ($base as [$username, $role, $first, $last]) {
-            $user = User::firstOrCreate(['username' => $username], [
-                'password' => 'password', 'role' => $role,
-                'firstName' => $first, 'lastName' => $last,
-                'isActive' => true, 'canBackfill' => true,
-            ]);
+        foreach ($base as [
+            $username,
+            $role,
+            $first,
+            $last,
+            $paternal,
+            $maternal,
+        ]) {
+            $user = User::firstOrCreate(
+                ['username' => $username],
+                [
+                    'password' => 'password',
+                    'role' => $role,
+                    'firstName' => $first,
+                    'lastName' => $last,
+                    'paternalSurname' => $paternal,
+                    'maternalSurname' => $maternal,
+                    'isActive' => true,
+                    'canBackfill' => true,
+                ]
+            );
 
             if (! $user->canBackfill) {
                 $user->update(['canBackfill' => true]);
@@ -57,5 +85,9 @@ class UsersSeeder extends Seeder
                 $user->assignRole($role);
             }
         }
+
+        $this->command?->info(
+            count($base) . ' usuarios procesados correctamente.'
+        );
     }
 }

@@ -114,24 +114,36 @@
                 <td>{{ $search }}</td>
             </tr>
         @endif
+        @if (! empty($itemsSummary))
+            <tr>
+                <td class="label">Ítems entregados:</td>
+                <td>
+                    @foreach ($itemsSummary as $item)
+                        {{ $item['name'] }}: {{ $item['total'] }}{{ ! $loop->last ? ' · ' : '' }}
+                    @endforeach
+                </td>
+            </tr>
+        @endif
     </table>
 
     <table class="data">
         <colgroup>
-            <col style="width: 8%;">
-            <col style="width: 6%;">
-            <col style="width: 23%;">
-            <col style="width: 12%;">
-            <col style="width: 9%;">
-            <col style="width: 18%;">
+            <col style="width: 7%;">
+            <col style="width: 5%;">
+            <col style="width: 7%;">
+            <col style="width: 19%;">
+            <col style="width: 13%;">
             <col style="width: 10%;">
-            <col style="width: 8%;">
+            <col style="width: 7%;">
+            <col style="width: 13%;">
+            <col style="width: 9%;">
             <col style="width: 6%;">
+            <col style="width: 4%;">
         </colgroup>
         <thead>
             <tr>
                 @foreach ($headers as $header)
-                    <th class="{{ in_array($header, ['Fecha', 'Hora', 'Nro. placa / póliza', 'Ticket', 'Estado', 'Activo']) ? 'center' : '' }}">
+                    <th class="{{ in_array($header, ['Fecha', 'Hora', 'Tipo', 'Nro. placa / póliza', 'Ticket', 'Estado', 'Activo']) ? 'center' : '' }}">
                         {{ $header }}
                     </th>
                 @endforeach
@@ -142,16 +154,18 @@
                 <tr>
                     <td class="center">{{ $row[0] }}</td>
                     <td class="center">{{ $row[1] }}</td>
-                    <td>{{ $row[2] }}</td>
-                    <td class="center mono">{{ $row[3] }}</td>
-                    <td class="center mono">{{ $row[4] }}</td>
-                    <td>{{ $row[5] ?: '—' }}</td>
-                    <td>{{ $row[6] }}</td>
+                    <td class="center">{{ $row[2] }}</td>
+                    <td>{{ $row[3] }}</td>
+                    <td>{{ $row[4] }}</td>
+                    <td class="center mono">{{ $row[5] }}</td>
+                    <td class="center mono">{{ $row[6] }}</td>
+                    <td>{{ $row[7] ?: '—' }}</td>
+                    <td>{{ $row[8] }}</td>
                     <td class="center">
-                        <span class="badge {{ $row[7] === 'Recepcionado' ? 'badge-recepcionado' : 'badge-procesado' }}">{{ $row[7] }}</span>
+                        <span class="badge {{ $row[9] === 'Recepcionado' ? 'badge-recepcionado' : 'badge-procesado' }}">{{ $row[9] }}</span>
                     </td>
                     <td class="center">
-                        <span class="badge {{ $row[8] === 'Activo' ? 'badge-on' : 'badge-off' }}">{{ $row[8] }}</span>
+                        <span class="badge {{ $row[10] === 'Activo' ? 'badge-on' : 'badge-off' }}">{{ $row[10] }}</span>
                     </td>
                 </tr>
             @empty

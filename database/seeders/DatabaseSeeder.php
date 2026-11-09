@@ -19,9 +19,11 @@ class DatabaseSeeder extends Seeder
         $this->call([
             RolesAndPermissionsSeeder::class,
             UsersSeeder::class,
+            TipoRegistroSeeder::class,
+            EntregaItemSeeder::class,
             ServicesSeeder::class,
             TemplatesSeeder::class,
-            TramiteRegistroSeeder::class,
+            // TramiteRegistroSeeder::class,
         ]);
     }
 
@@ -48,7 +50,9 @@ class DatabaseSeeder extends Seeder
     public static function wipeData(): void
     {
         Schema::disableForeignKeyConstraints();
-        foreach (['reports', 'tramite_registros', 'entries', 'templates', 'services',
+        foreach (['reports', 'tramite_registro_entrega_items', 'tramite_registros',
+                     'service_entrega_items', 'entries', 'templates', 'services',
+                     'entrega_items', 'tipo_registros',
                      'model_has_roles', 'model_has_permissions', 'users'] as $table) {
             DB::table($table)->delete();
         }

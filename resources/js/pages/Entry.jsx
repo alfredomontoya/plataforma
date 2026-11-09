@@ -10,7 +10,17 @@ import { Pagination, PAGE_SIZE_OPTIONS } from '../components/ui/Pagination';
 import { RangeDatePicker } from '../components/ui/RangeDatePicker';
 import { useToast } from '../components/ui/Toast';
 
-const EMPTY = { date: '', serviceId: '', placa: '', ticket: '', estado: 'procesado', observaciones: '', activo: true };
+const EMPTY = {
+    date: '',
+    serviceId: '',
+    tipoRegistroId: '',
+    entregaItems: [],
+    placa: '',
+    ticket: '',
+    estado: 'procesado',
+    observaciones: '',
+    activo: true,
+};
 
 const TICKET_ROLES = ['OPERATOR_INGRESO', 'OPERATOR_ENTREGA'];
 
@@ -41,9 +51,6 @@ const sanitizeTicket = (value) =>
   String(value ?? '')
     .toUpperCase()
     .replace(/[^A-Z0-9-]/g, '')
-    .replace(/-/g, (match, offset, string) =>
-      string.indexOf('-') === offset ? match : ''
-    )
     .slice(0, 8);
 
 const placaKind = (value) => {
@@ -68,13 +75,31 @@ const fmtTime = (value) => {
     return d.toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' });
 };
 
-const typeLabel = (type) => (type === 'ENTREGA' ? 'Entrega' : 'Ingreso');
+const typeLabel = (type) => {
+    if (type === 'ENTREGA') return 'Entrega';
+    if (type === 'CIERRE') return 'Cierre';
+    return 'Ingreso';
+};
 
 const estadoLabel = (estado) => (estado === 'recepcionado' ? 'Recepcionado' : 'Procesado');
 
 const estadoClass = (estado) => (estado === 'recepcionado'
     ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
     : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300');
+
+const tipoBadgeClass = (codigo) => {
+    if (codigo === 'ENTREGA') {
+        return 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300';
+    }
+
+    if (codigo === 'CIERRE') {
+        return 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300';
+    }
+
+    return 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300';
+};
+
+const recordItems = (record) => record?.entrega_items ?? record?.entregaItems ?? [];
 
 const userLabel = (u) => {
     if (!u) return '—';
@@ -99,8 +124,11 @@ export default function Entry() {
     const [totalPages, setTotalPages] = useState(1);
     const [activos, setActivos] = useState(0);
     const [porTipo, setPorTipo] = useState([]);
+    const [resumenItems, setResumenItems] = useState([]);
     const [refreshKey, setRefreshKey] = useState(0);
     const [catalog, setCatalog] = useState([]);
+    const [tiposRegistro, setTiposRegistro] = useState([]);
+    const [entregaItemsCatalog, setEntregaItemsCatalog] = useState([]);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
@@ -114,12 +142,19 @@ export default function Entry() {
     const [ticketTouched, setTicketTouched] = useState(false);
 
     const isPrivileged = ['ADMIN', 'JEFE'].includes(user?.role);
-    const ticketRequired = TICKET_ROLES.includes(user?.role);
     const today = todayLocal();
 
     useEffect(() => {
-        api.get('/tramites/catalog')
-            .then((r) => setCatalog(r.data?.data ?? []))
+        Promise.all([
+            api.get('/tramites/catalog'),
+            api.get('/tipos-registro'),
+            api.get('/entrega-items'),
+        ])
+            .then(([cat, tipos, items]) => {
+                setCatalog(cat.data?.data ?? []);
+                setTiposRegistro(tipos.data?.data ?? []);
+                setEntregaItemsCatalog(items.data?.data ?? []);
+            })
             .catch(() => toastError('No se pudo cargar el catálogo de trámites.'));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -165,6 +200,7 @@ export default function Entry() {
                 setTotalPages(lastPage);
                 setActivos(payload.activos ?? 0);
                 setPorTipo(payload.porTipo ?? []);
+                setResumenItems(payload.entregaItems ?? []);
             })
             .catch((e) => {
                 if (e.code === 'ERR_CANCELED' || e.name === 'CanceledError') return;
@@ -173,6 +209,7 @@ export default function Entry() {
                 setTotalPages(1);
                 setActivos(0);
                 setPorTipo([]);
+                setResumenItems([]);
                 toastError(e.response?.data?.error || 'No se pudo cargar el registro.');
             })
             .finally(() => {
@@ -186,29 +223,86 @@ export default function Entry() {
     const options = useMemo(
         () => catalog.map((s) => ({
             value: s.id,
-            label: `${typeLabel(s.type)} · ${s.name}`,
+            label: s.name,
             description: [s.codigo, s.abreviation].filter(Boolean).join(' · '),
             keywords: `${s.name} ${s.codigo ?? ''} ${s.abreviation ?? ''}`,
         })),
         [catalog],
     );
 
+    const selectedService = useMemo(
+        () => catalog.find((s) => s.id === form.serviceId),
+        [catalog, form.serviceId],
+    );
+
+    const selectedTipo = useMemo(
+        () => tiposRegistro.find((t) => t.id === form.tipoRegistroId),
+        [tiposRegistro, form.tipoRegistroId],
+    );
+
+    const requiresItems = !!selectedTipo?.requiereItems;
+
+    // El ticket es obligatorio solo para operadores y tipos que lo exigen.
+    const ticketRequired =
+        TICKET_ROLES.includes(user?.role) &&
+        selectedTipo?.requiereTicket !== false;
+
+    const permittedItems = useMemo(() => {
+        if (!selectedService) return [];
+        const configured = selectedService.entregaItems ?? [];
+        return configured.length > 0 ? configured : entregaItemsCatalog;
+    }, [selectedService, entregaItemsCatalog]);
+
+    // En edición se muestran también los ítems guardados que ya no estén configurados.
+    const availableItems = useMemo(() => {
+        const base = permittedItems.map((i) => ({ ...i, disabled: false }));
+        if (!editing) return base;
+
+        const ids = new Set(base.map((i) => i.id));
+        recordItems(editing).forEach((i) => {
+            if (!ids.has(i.id)) base.push({ ...i, disabled: true });
+        });
+        return base;
+    }, [permittedItems, editing]);
+
+    const defaultItemsFor = (serviceId, tipoId) => {
+        const tipo = tiposRegistro.find((t) => t.id === tipoId);
+        if (!tipo?.requiereItems) return [];
+        const service = catalog.find((s) => s.id === serviceId);
+        const configured = service?.entregaItems ?? [];
+        const pool = configured.length > 0 ? configured : entregaItemsCatalog;
+        return pool.map((i) => i.id);
+    };
+
     const canEdit = (r) => isPrivileged || r.userId === user?.id;
     const maxTipo = porTipo.reduce((max, item) => Math.max(max, item.total), 0) || 1;
 
     const openCreate = () => {
+        const tipoId = tiposRegistro[0]?.id ?? '';
+        const serviceId = catalog[0]?.id ?? '';
         setEditing(null);
-        setForm({ ...EMPTY, date: today, serviceId: catalog[0]?.id ?? '' });
+        setForm({
+            ...EMPTY,
+            date: today,
+            serviceId,
+            tipoRegistroId: tipoId,
+            entregaItems: defaultItemsFor(serviceId, tipoId),
+        });
         setPlacaTouched(false);
         setTicketTouched(false);
         setModalOpen(true);
     };
 
     const openEdit = (r) => {
+        const tipoId = r.tipoRegistroId
+            ?? tiposRegistro.find((t) => t.codigo === r.service?.type)?.id
+            ?? '';
         setEditing(r);
         setForm({
             date: dayOf(r.date),
             serviceId: r.serviceId,
+            tipoRegistroId: tipoId,
+            entregaItems: recordItems(r).map((i) => i.id),
             placa: r.placa ?? '',
             ticket: r.ticket ?? '',
             estado: r.estado ?? 'procesado',
@@ -226,6 +320,31 @@ export default function Entry() {
         setEditing(null);
     };
 
+    const onTipoChange = (tipoRegistroId) => {
+        setForm((prev) => ({
+            ...prev,
+            tipoRegistroId,
+            entregaItems: defaultItemsFor(prev.serviceId, tipoRegistroId),
+        }));
+    };
+
+    const onServiceChange = (serviceId) => {
+        setForm((prev) => ({
+            ...prev,
+            serviceId,
+            entregaItems: defaultItemsFor(serviceId, prev.tipoRegistroId),
+        }));
+    };
+
+    const toggleItem = (itemId) => {
+        setForm((prev) => ({
+            ...prev,
+            entregaItems: prev.entregaItems.includes(itemId)
+                ? prev.entregaItems.filter((id) => id !== itemId)
+                : [...prev.entregaItems, itemId],
+        }));
+    };
+
     const rowActions = (record) => {
         if (!canEdit(record)) return null;
 
@@ -238,7 +357,7 @@ export default function Entry() {
                 >
                     <PencilSquareIcon className="h-4 w-4" /> Editar
                 </button>
-                {record.activo && (
+                {isPrivileged && record.activo && (
                     <button
                         type="button"
                         onClick={() => setDeleteTarget(record)}
@@ -261,6 +380,14 @@ export default function Entry() {
             toastError('Seleccione la fecha y el tipo de trámite.');
             return;
         }
+        if (!form.tipoRegistroId) {
+            toastError('Seleccione el tipo de registro.');
+            return;
+        }
+        if (requiresItems && form.entregaItems.length === 0) {
+            toastError('Seleccione al menos un ítem de entrega.');
+            return;
+        }
         if (!placa) {
             setPlacaTouched(true);
             toastError('El nro. de placa o póliza es obligatorio.');
@@ -280,6 +407,8 @@ export default function Entry() {
         const payload = {
             date: form.date,
             serviceId: form.serviceId,
+            tipoRegistroId: form.tipoRegistroId,
+            entregaItems: requiresItems ? form.entregaItems : [],
             placa,
             ticket: ticket || null,
             estado: form.estado || 'procesado',
@@ -381,6 +510,8 @@ export default function Entry() {
         ? 'El número de ticket es obligatorio para su rol.'
         : null;
 
+    const tipoOptions = tiposRegistro.map((t) => ({ value: t.id, label: t.name }));
+
     const emptyMessage = total === 0
         ? search
             ? 'No hay registros que coincidan con la búsqueda.'
@@ -424,7 +555,7 @@ export default function Entry() {
                             <Button
                                 className="col-span-2 w-full sm:col-span-1 sm:w-auto"
                                 onClick={openCreate}
-                                disabled={catalog.length === 0}
+                                disabled={catalog.length === 0 || tiposRegistro.length === 0}
                             >
                                 <PlusIcon className="mr-1 h-5 w-5" /> Nuevo registro
                             </Button>
@@ -459,12 +590,14 @@ export default function Entry() {
 
                 <div className="card overflow-hidden p-0">
                     <div className="hidden overflow-x-auto sm:block">
-                        <table className="table min-w-[1000px]" aria-busy={loading}>
+                        <table className="table min-w-[1180px]" aria-busy={loading}>
                             <thead>
                                 <tr>
                                     <th>Fecha</th>
                                     <th>Hora</th>
+                                    <th>Tipo</th>
                                     <th>Tipo de trámite</th>
+                                    <th>Ítems</th>
                                     <th>Nro. placa / póliza</th>
                                     <th>Ticket</th>
                                     <th>Observaciones</th>
@@ -476,10 +609,10 @@ export default function Entry() {
                             </thead>
                             <tbody className={loading ? 'opacity-60 transition-opacity' : ''}>
                                 {loading && records.length === 0 ? (
-                                    <tr><td colSpan={isPrivileged ? 10 : 9} className="text-sm text-stone-500 dark:text-wa-muted">Cargando…</td></tr>
+                                    <tr><td colSpan={isPrivileged ? 12 : 11} className="text-sm text-stone-500 dark:text-wa-muted">Cargando…</td></tr>
                                 ) : records.length === 0 ? (
                                     <tr>
-                                        <td colSpan={isPrivileged ? 10 : 9} className="text-sm text-stone-500 dark:text-wa-muted">
+                                        <td colSpan={isPrivileged ? 12 : 11} className="text-sm text-stone-500 dark:text-wa-muted">
                                             {total === 0
                                                 ? search
                                                     ? 'No hay registros que coincidan con la búsqueda.'
@@ -492,10 +625,25 @@ export default function Entry() {
                                         <td className="whitespace-nowrap tabular-nums">{fmtDate(r.date)}</td>
                                         <td className="whitespace-nowrap tabular-nums">{fmtTime(r.created_at)}</td>
                                         <td>
-                                            <span className="text-[13px]">{r.service?.name ?? '—'}</span>
-                                            <span className={`ml-2 inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ${r.service?.type === 'ENTREGA' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300'}`}>
-                                                {typeLabel(r.service?.type)}
+                                            <span className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ${tipoBadgeClass(r.tipo_registro?.codigo ?? r.service?.type)}`}>
+                                                {r.tipo_registro?.name ?? typeLabel(r.service?.type)}
                                             </span>
+                                        </td>
+                                        <td>
+                                            <span className="text-[13px]">{r.service?.name ?? '—'}</span>
+                                        </td>
+                                        <td>
+                                            {recordItems(r).length === 0 ? (
+                                                <span className="text-[13px] text-stone-400">—</span>
+                                            ) : (
+                                                <span className="flex flex-wrap gap-1">
+                                                    {recordItems(r).map((item) => (
+                                                        <span key={item.id} className="inline-block rounded bg-stone-100 px-1.5 py-0.5 text-[11px] font-medium text-stone-700 dark:bg-white/10 dark:text-wa-text" title={item.name}>
+                                                            {item.codigo}
+                                                        </span>
+                                                    ))}
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="font-mono text-[13px] uppercase">{r.placa}</td>
                                         <td className="font-mono text-[13px] uppercase">{r.ticket || '—'}</td>
@@ -548,6 +696,18 @@ export default function Entry() {
                                         <dt className="text-stone-500 dark:text-wa-muted">Placa/póliza:</dt>
                                         <dd className="font-mono uppercase">{r.placa}</dd>
                                     </div>
+                                    {recordItems(r).length > 0 && (
+                                        <div className="flex gap-1">
+                                            <dt className="text-stone-500 dark:text-wa-muted">Ítems:</dt>
+                                            <dd className="flex flex-wrap gap-1">
+                                                {recordItems(r).map((item) => (
+                                                    <span key={item.id} className="rounded bg-stone-100 px-1.5 py-0.5 text-[11px] dark:bg-white/10" title={item.name}>
+                                                        {item.codigo}
+                                                    </span>
+                                                ))}
+                                            </dd>
+                                        </div>
+                                    )}
                                     {r.ticket && (
                                         <div className="flex gap-1">
                                             <dt className="text-stone-500 dark:text-wa-muted">Ticket:</dt>
@@ -570,8 +730,8 @@ export default function Entry() {
 
                                 <div className="mt-2 flex items-center justify-between gap-2 border-t border-stone-100 pt-2 dark:border-white/10">
                                     <span className="flex flex-wrap items-center gap-1">
-                                        <span className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ${r.service?.type === 'ENTREGA' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300'}`}>
-                                            {typeLabel(r.service?.type)}
+                                        <span className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ${tipoBadgeClass(r.tipo_registro?.codigo ?? r.service?.type)}`}>
+                                            {r.tipo_registro?.name ?? typeLabel(r.service?.type)}
                                         </span>
                                         <span className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ${estadoClass(r.estado)}`}>
                                             {estadoLabel(r.estado)}
@@ -643,14 +803,14 @@ export default function Entry() {
                                     const barColor = item.type === 'ENTREGA' ? 'bg-green-500' : 'bg-primary-500';
 
                                     return (
-                                        <li key={item.serviceId}>
+                                        <li key={`${item.serviceId}-${item.tipoRegistroId ?? 'x'}`}>
                                             <div className="flex items-baseline justify-between gap-2">
                                                 <div className="min-w-0">
                                                     <p className="truncate text-[13px] font-medium" title={item.name}>
                                                         {item.name}
                                                     </p>
                                                     <p className="text-[11px] text-stone-500 dark:text-wa-muted">
-                                                        {typeLabel(item.type)}
+                                                        {item.tipoRegistro ?? typeLabel(item.type)}
                                                         {item.codigo ? ` · ${item.codigo}` : ''}
                                                     </p>
                                                 </div>
@@ -672,71 +832,135 @@ export default function Entry() {
                             <span className="text-stone-500 dark:text-wa-muted">Total activo</span>
                             <span className="font-semibold tabular-nums">{activos}</span>
                         </div>
+
+                        <div className="mt-4 border-t border-stone-200 pt-3 dark:border-white/10">
+                            <span className="block text-sm font-semibold">Ítems entregados</span>
+                            {resumenItems.length === 0 ? (
+                                <p className="mt-2 text-xs text-stone-500 dark:text-wa-muted">
+                                    Sin ítems entregados en el periodo.
+                                </p>
+                            ) : (
+                                <ul className="mt-2 space-y-1.5 text-[13px]">
+                                    {resumenItems.map((item) => (
+                                        <li key={item.itemId} className="flex items-baseline justify-between gap-2">
+                                            <span className="min-w-0 truncate" title={item.name}>{item.name}</span>
+                                            <span className="shrink-0 font-semibold tabular-nums">{item.total}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </div>
                     </div>
                 </aside>
             </div>
 
-            <Modal isOpen={modalOpen} onClose={close} title={editing ? 'Editar trámite' : 'Nuevo trámite'}>
-                <form onSubmit={submit} noValidate className="space-y-4">
-                    <Input
-                        type="date"
-                        label="Fecha"
-                        value={form.date}
-                        max={today}
-                        required
-                        autoFocus={!editing}
-                        onChange={(e) => setForm({ ...form, date: e.target.value })}
-                    />
+            <Modal isOpen={modalOpen} onClose={close} title={editing ? 'Editar trámite' : 'Nuevo trámite'} size="lg">
+                <form onSubmit={submit} noValidate className="space-y-3">
+                    <div className="grid gap-3 sm:grid-cols-3">
+                        <Input
+                            type="date"
+                            label="Fecha"
+                            value={form.date}
+                            max={today}
+                            required
+                            autoFocus={!editing}
+                            onChange={(e) => setForm({ ...form, date: e.target.value })}
+                        />
+                        <Select
+                            label="Tipo de registro"
+                            value={form.tipoRegistroId}
+                            options={tipoOptions}
+                            onChange={(e) => onTipoChange(e.target.value)}
+                        />
+                        <Select
+                            label="Estado"
+                            value={form.estado}
+                            options={ESTADO_OPTIONS}
+                            onChange={(e) => setForm({ ...form, estado: e.target.value })}
+                        />
+                    </div>
                     <Combobox
                         label="Tipo de trámite"
                         value={form.serviceId}
                         placeholder="Buscar tipo de trámite…"
                         options={options}
                         emptyMessage="No hay trámites que coincidan."
-                        onChange={(serviceId) => setForm({ ...form, serviceId })}
+                        onChange={onServiceChange}
                     />
-                    <Input
-                        label="Nro. placa o póliza"
-                        value={form.placa}
-                        placeholder="Ej. 123ABC o 0123456789"
-                        maxLength={10}
-                        required
-                        error={placaError}
-                        helperText={
-                            placaKind(placaValue) === 'placa'
-                                ? 'Placa válida (3 o 4 dígitos y 3 letras).'
-                                : placaKind(placaValue) === 'poliza'
-                                  ? 'Póliza válida (5 a 10 dígitos).'
-                                  : 'Placa: 3 o 4 dígitos y 3 letras (123ABC). Póliza: 5 a 10 dígitos.'
-                        }
-                        onBlur={() => setPlacaTouched(true)}
-                        onChange={(e) => setForm({ ...form, placa: sanitizePlaca(e.target.value) })}
-                    />
-                    <Input
-                        label="Nro. de ticket"
-                        value={form.ticket}
-                        placeholder="Ej. A1234567"
-                        maxLength={8}
-                        required={ticketRequired}
-                        error={ticketError}
-                        helperText={
-                            ticketRequired
-                                ? 'Obligatorio para su rol. Alfanumérico, máximo 8 caracteres.'
-                                : 'Opcional. Alfanumérico, máximo 8 caracteres.'
-                        }
-                        onBlur={() => setTicketTouched(true)}
-                        onChange={(e) => setForm({ ...form, ticket: sanitizeTicket(e.target.value) })}
-                    />
-                    <Select
-                        label="Estado"
-                        value={form.estado}
-                        options={ESTADO_OPTIONS}
-                        onChange={(e) => setForm({ ...form, estado: e.target.value })}
-                    />
+                    {requiresItems && (
+                        <div>
+                            <span className="mb-1 block text-sm font-medium">Ítems de entrega</span>
+                            <div className="flex flex-wrap gap-2 rounded-lg border border-stone-200 p-2.5 dark:border-white/10">
+                                {availableItems.length === 0 ? (
+                                    <p className="text-xs text-stone-500 dark:text-wa-muted">
+                                        No hay ítems configurados para este trámite.
+                                    </p>
+                                ) : availableItems.map((item) => (
+                                    <label
+                                        key={item.id}
+                                        title={`${item.name} (${item.codigo})`}
+                                        className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
+                                            form.entregaItems.includes(item.id)
+                                                ? 'border-primary-300 bg-primary-50 text-primary-800 dark:border-primary-500/40 dark:bg-primary-500/10 dark:text-primary-200'
+                                                : 'border-stone-200 text-stone-700 dark:border-white/10 dark:text-wa-text'
+                                        } ${item.disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            className="h-3.5 w-3.5"
+                                            checked={form.entregaItems.includes(item.id)}
+                                            disabled={item.disabled}
+                                            onChange={() => toggleItem(item.id)}
+                                        />
+                                        <span>{item.name}</span>
+                                    </label>
+                                ))}
+                            </div>
+                            <p className="mt-1 text-xs text-stone-500 dark:text-wa-muted">
+                                Puede desmarcar los que no correspondan.
+                            </p>
+                        </div>
+                    )}
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        <Input
+                            label="Nro. placa o póliza"
+                            value={form.placa}
+                            placeholder="Ej. 123ABC o 0123456789"
+                            maxLength={10}
+                            required
+                            error={placaError}
+                            helperText={
+                                placaKind(placaValue) === 'placa'
+                                    ? 'Placa válida.'
+                                    : placaKind(placaValue) === 'poliza'
+                                      ? 'Póliza válida.'
+                                      : 'Placa 123ABC · póliza 5–10 dígitos'
+                            }
+                            onBlur={() => setPlacaTouched(true)}
+                            onChange={(e) => setForm({ ...form, placa: sanitizePlaca(e.target.value) })}
+                        />
+                        <Input
+                            label="Nro. de ticket"
+                            value={form.ticket}
+                            placeholder="Ej. A1234567"
+                            maxLength={8}
+                            required={ticketRequired}
+                            error={ticketError}
+                            helperText={
+                                selectedTipo?.requiereTicket === false
+                                    ? 'No requerido para este tipo · máx. 8 (A-Z, 0-9, -)'
+                                    : ticketRequired
+                                        ? 'Obligatorio · máx. 8 (A-Z, 0-9, -)'
+                                        : 'Opcional · máx. 8 (A-Z, 0-9, -)'
+                            }
+                            onBlur={() => setTicketTouched(true)}
+                            onChange={(e) => setForm({ ...form, ticket: sanitizeTicket(e.target.value) })}
+                        />
+                    </div>
                     <label className="block">
                         <span className="mb-1 block text-sm font-medium">Observaciones</span>
                         <textarea
-                            rows={3}
+                            rows={2}
                             maxLength={500}
                             value={form.observaciones}
                             onChange={(e) => setForm({ ...form, observaciones: e.target.value })}
@@ -744,21 +968,27 @@ export default function Entry() {
                             placeholder="Opcional"
                         />
                     </label>
-                    <label className="flex items-center gap-2 text-sm">
-                        <input
-                            type="checkbox"
-                            checked={form.activo}
-                            onChange={(e) => setForm({ ...form, activo: e.target.checked })}
-                        />
-                        Registro activo (cuenta en dashboard y reportes)
-                    </label>
-                    <div className="flex justify-end gap-2 pt-2">
-                        <Button type="button" variant="secondary" onClick={close} disabled={saving}>
-                            Cancelar
-                        </Button>
-                        <Button type="submit" loading={saving}>
-                            {editing ? 'Guardar cambios' : 'Registrar'}
-                        </Button>
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                        {editing ? (
+                            <label className="flex items-center gap-2 text-sm" title="Cuenta en dashboard y reportes">
+                                <input
+                                    type="checkbox"
+                                    checked={form.activo}
+                                    onChange={(e) => setForm({ ...form, activo: e.target.checked })}
+                                />
+                                Activo
+                            </label>
+                        ) : (
+                            <span />
+                        )}
+                        <div className="flex justify-end gap-2">
+                            <Button type="button" variant="secondary" onClick={close} disabled={saving}>
+                                Cancelar
+                            </Button>
+                            <Button type="submit" loading={saving}>
+                                {editing ? 'Guardar cambios' : 'Registrar'}
+                            </Button>
+                        </div>
                     </div>
                 </form>
             </Modal>

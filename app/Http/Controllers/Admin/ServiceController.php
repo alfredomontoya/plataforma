@@ -29,7 +29,7 @@ class ServiceController extends Controller
     public function index(Request $request): JsonResponse
     {
         $limit = min(max((int) $request->query('limit', 20), 1), 100);
-        $q = Service::query();
+        $q = Service::query()->with('entregaItems');
 
         if ($search = $request->query('search')) {
             $q->where(fn ($w) => $w->where('name', 'like', "%{$search}%")
@@ -48,7 +48,24 @@ class ServiceController extends Controller
 
     public function show(string $id): JsonResponse
     {
-        return ApiResponse::ok(Service::findOrFail($id));
+        return ApiResponse::ok(Service::with('entregaItems')->findOrFail($id));
+    }
+
+    /** Ítems de entrega permitidos para un trámite. */
+    public function updateEntregaItems(Request $request, string $id): JsonResponse
+    {
+        $service = Service::findOrFail($id);
+
+        $data = $request->validate([
+            'entregaItems' => ['present', 'array'],
+            'entregaItems.*' => ['string', 'exists:entrega_items,id'],
+        ]);
+
+        $service->entregaItems()->sync($data['entregaItems']);
+
+        return ApiResponse::ok(
+            $service->fresh()->load('entregaItems')
+        );
     }
 
     public function store(CreateServiceRequest $request): JsonResponse

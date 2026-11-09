@@ -2,13 +2,16 @@
 
 namespace Database\Seeders;
 
+use App\Models\EntregaItem;
 use App\Models\Service;
+use App\Models\TipoRegistro;
 use App\Models\TramiteRegistro;
 use App\Models\User;
 use App\Support\MongoId;
 use App\Support\Mulberry32;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Siembra demo de `tramite_registros` (un registro = un trámite).
@@ -54,6 +57,12 @@ class TramitesSeeder extends Seeder
             return;
         }
 
+        $tipos = TipoRegistro::where('isActive', true)->get();
+        $items = EntregaItem::where('isActive', true)->get();
+        if ($tipos->isEmpty()) {
+            return;
+        }
+
         $users = User::whereIn('role', ['OPERATOR_INGRESO', 'OPERATOR_ENTREGA', 'ADMIN'])
             ->where('isActive', true)
             ->orderBy('username')
@@ -64,6 +73,7 @@ class TramitesSeeder extends Seeder
 
         $rng = new Mulberry32($this->seed ?? 20261104);
         $rows = [];
+        $itemRows = [];
         $cursor = $start->copy();
 
         while ($cursor->lt($end)) {
@@ -72,24 +82,16 @@ class TramitesSeeder extends Seeder
 
             for ($i = 0; $i < $n; $i++) {
                 $user = $users[$rng->int(0, $users->count() - 1)];
-                $type = match ($user->role) {
-                    'OPERATOR_INGRESO' => Service::TYPE_INGRESO,
-                    'OPERATOR_ENTREGA' => Service::TYPE_ENTREGA,
-                    default => $rng->next() < 0.5 ? Service::TYPE_INGRESO : Service::TYPE_ENTREGA,
-                };
-
-                $pool = $services->where('type', $type)->values();
-                if ($pool->isEmpty()) {
-                    continue;
-                }
-
-                $service = $pool[$rng->int(0, $pool->count() - 1)];
+                $service = $services[$rng->int(0, $services->count() - 1)];
+                $tipo = $tipos[$rng->int(0, $tipos->count() - 1)];
                 $createdAt = $day->copy()->addSeconds($rng->int(0, 86399));
+                $id = MongoId::generate();
 
                 $rows[] = [
-                    'id' => MongoId::generate(),
+                    'id' => $id,
                     'userId' => $user->id,
                     'serviceId' => $service->id,
+                    'tipoRegistroId' => $tipo->id,
                     'date' => $day,
                     'placa' => $this->plate($rng),
                     'ticket' => 'TK'.str_pad((string) $rng->int(0, 999999), 6, '0', STR_PAD_LEFT),
@@ -99,6 +101,16 @@ class TramitesSeeder extends Seeder
                     'created_at' => $createdAt,
                     'updated_at' => $createdAt,
                 ];
+
+                if ($tipo->requiereItems && $items->isNotEmpty()) {
+                    $selected = $items->random(min(2, $items->count()));
+                    foreach ($selected as $item) {
+                        $itemRows[] = [
+                            'tramiteRegistroId' => $id,
+                            'entregaItemId' => $item->id,
+                        ];
+                    }
+                }
             }
 
             $cursor->addDay();
@@ -106,6 +118,10 @@ class TramitesSeeder extends Seeder
 
         foreach (array_chunk($rows, 1000) as $chunk) {
             TramiteRegistro::insert($chunk);
+        }
+
+        foreach (array_chunk($itemRows, 1000) as $chunk) {
+            DB::table('tramite_registro_entrega_items')->insertOrIgnore($chunk);
         }
     }
 

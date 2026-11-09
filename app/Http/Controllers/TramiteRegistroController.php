@@ -48,6 +48,7 @@ class TramiteRegistroController extends Controller
         return ApiResponse::paginated($paginator, [
             'activos' => $tramites->activeCount($user, $from, $to, $search),
             'porTipo' => $tramites->summaryByType($user, $from, $to, $search),
+            'entregaItems' => $tramites->entregaItemsSummary($user, $from, $to, $search),
         ]);
     }
 
@@ -72,6 +73,16 @@ class TramiteRegistroController extends Controller
     public function catalog(Request $request, TramiteRegistroService $tramites): JsonResponse
     {
         return ApiResponse::ok($tramites->catalog($request->user()));
+    }
+
+    public function tiposRegistro(TramiteRegistroService $tramites): JsonResponse
+    {
+        return ApiResponse::ok($tramites->tiposRegistro());
+    }
+
+    public function entregaItems(TramiteRegistroService $tramites): JsonResponse
+    {
+        return ApiResponse::ok($tramites->entregaItemsCatalog());
     }
 
     public function store(StoreTramiteRegistroRequest $request, TramiteRegistroService $tramites): JsonResponse

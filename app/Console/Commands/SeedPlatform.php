@@ -3,9 +3,11 @@
 namespace App\Console\Commands;
 
 use Database\Seeders\DatabaseSeeder;
+use Database\Seeders\EntregaItemSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Database\Seeders\ServicesSeeder;
 use Database\Seeders\TemplatesSeeder;
+use Database\Seeders\TipoRegistroSeeder;
 use Database\Seeders\TramitesSeeder;
 use Database\Seeders\UsersSeeder;
 use Illuminate\Console\Command;
@@ -63,6 +65,8 @@ class SeedPlatform extends Command
         if (! $this->option('skip-users')) {
             (new UsersSeeder())->run();
         }
+        (new TipoRegistroSeeder())->run();
+        (new EntregaItemSeeder())->run();
         if (! $this->option('skip-services')) {
             (new ServicesSeeder())->run();
         }

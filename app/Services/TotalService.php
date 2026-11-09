@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Models\Service;
+use App\Models\TipoRegistro;
 use App\Models\TramiteRegistro;
 use App\Models\User;
 use App\Support\ApiResponse;
@@ -13,7 +13,8 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Agregados de trámites para el dashboard (día/semana/rango + serie diaria),
- * calculados desde `tramite_registros` (solo activos, tipo INGRESO).
+ * calculados desde `tramite_registros` (solo activos).
+ * El bloque principal cuenta INGRESO; CIERRE se expone por separado.
  * Día = [D, D+1) UTC · semana = 7 días lun–dom · rango máx 93 días.
  */
 class TotalService
@@ -27,7 +28,11 @@ class TotalService
         return [
             'date' => $date,
             'total' => $this->total($start, $start->copy()->addDay()),
+            'totalEntrega' => $this->total($start, $start->copy()->addDay(), TipoRegistro::CODE_ENTREGA),
+            'totalCierre' => $this->total($start, $start->copy()->addDay(), TipoRegistro::CODE_CIERRE),
             'byTramite' => $this->byTramite($start, $start->copy()->addDay()),
+            'byTramiteEntrega' => $this->byTramite($start, $start->copy()->addDay(), TipoRegistro::CODE_ENTREGA),
+            'byTramiteCierre' => $this->byTramite($start, $start->copy()->addDay(), TipoRegistro::CODE_CIERRE),
             'operators' => $this->activeOperators(),
         ];
     }
@@ -55,7 +60,7 @@ class TotalService
         return $this->rangePayload($start, $end);
     }
 
-    /** Totales por día en [from, to] inclusivo: [{date, total}] (días sin datos en 0). */
+    /** Totales por día en [from, to] inclusivo: [{date, total, entrega, cierre}] (días sin datos en 0). */
     public function daily(string $from, string $to): array
     {
         $start = BusinessDay::parseUtcDay($from);
@@ -69,15 +74,21 @@ class TotalService
         }
 
         $byDay = TramiteRegistro::query()
-            ->join('services', 'services.id', '=', 'tramite_registros.serviceId')
+            ->join('tipo_registros', 'tipo_registros.id', '=', 'tramite_registros.tipoRegistroId')
             ->where('tramite_registros.activo', true)
-            ->where('services.type', Service::TYPE_INGRESO)
+            ->whereIn('tipo_registros.codigo', [
+                TipoRegistro::CODE_INGRESO,
+                TipoRegistro::CODE_ENTREGA,
+                TipoRegistro::CODE_CIERRE,
+            ])
             ->where('tramite_registros.date', '>=', $start)
             ->where('tramite_registros.date', '<', $end)
             ->groupBy(DB::raw('DATE(tramite_registros.date)'))
             ->get([
                 DB::raw('DATE(tramite_registros.date) as day'),
-                DB::raw('COUNT(*) as total'),
+                DB::raw("SUM(CASE WHEN tipo_registros.codigo = 'INGRESO' THEN 1 ELSE 0 END) as total"),
+                DB::raw("SUM(CASE WHEN tipo_registros.codigo = 'ENTREGA' THEN 1 ELSE 0 END) as entrega"),
+                DB::raw("SUM(CASE WHEN tipo_registros.codigo = 'CIERRE' THEN 1 ELSE 0 END) as cierre"),
             ])
             ->keyBy('day');
 
@@ -86,7 +97,12 @@ class TotalService
         while ($cursor->lt($end)) {
             $key = $cursor->toDateString();
             $r = $byDay->get($key);
-            $out[] = ['date' => $key, 'total' => (int) ($r->total ?? 0)];
+            $out[] = [
+                'date' => $key,
+                'total' => (int) ($r->total ?? 0),
+                'entrega' => (int) ($r->entrega ?? 0),
+                'cierre' => (int) ($r->cierre ?? 0),
+            ];
             $cursor->addDay();
         }
 
@@ -99,7 +115,11 @@ class TotalService
             'periodStart' => $start->toDateString(),
             'periodEnd' => $end->copy()->subDay()->toDateString(),
             'total' => $this->total($start, $end),
+            'totalEntrega' => $this->total($start, $end, TipoRegistro::CODE_ENTREGA),
+            'totalCierre' => $this->total($start, $end, TipoRegistro::CODE_CIERRE),
             'byTramite' => $this->byTramite($start, $end),
+            'byTramiteEntrega' => $this->byTramite($start, $end, TipoRegistro::CODE_ENTREGA),
+            'byTramiteCierre' => $this->byTramite($start, $end, TipoRegistro::CODE_CIERRE),
             'operators' => $this->activeOperators(),
         ];
     }
@@ -112,24 +132,25 @@ class TotalService
             ->count();
     }
 
-    private function total(Carbon $start, Carbon $end): int
+    private function total(Carbon $start, Carbon $end, string $type = TipoRegistro::CODE_INGRESO): int
     {
         return (int) TramiteRegistro::query()
-            ->join('services', 'services.id', '=', 'tramite_registros.serviceId')
+            ->join('tipo_registros', 'tipo_registros.id', '=', 'tramite_registros.tipoRegistroId')
             ->where('tramite_registros.activo', true)
-            ->where('services.type', Service::TYPE_INGRESO)
+            ->where('tipo_registros.codigo', $type)
             ->where('tramite_registros.date', '>=', $start)
             ->where('tramite_registros.date', '<', $end)
             ->count();
     }
 
     /** Totales por servicio en orden del catálogo (solo > 0): [{nro, serviceId, tramite, total}]. */
-    private function byTramite(Carbon $start, Carbon $end): array
+    private function byTramite(Carbon $start, Carbon $end, string $type = TipoRegistro::CODE_INGRESO): array
     {
         $sums = TramiteRegistro::query()
+            ->join('tipo_registros', 'tipo_registros.id', '=', 'tramite_registros.tipoRegistroId')
             ->join('services', 'services.id', '=', 'tramite_registros.serviceId')
             ->where('tramite_registros.activo', true)
-            ->where('services.type', Service::TYPE_INGRESO)
+            ->where('tipo_registros.codigo', $type)
             ->where('tramite_registros.date', '>=', $start)
             ->where('tramite_registros.date', '<', $end)
             ->groupBy('tramite_registros.serviceId', 'services.name', 'services.abreviation', 'services.codigo', 'services.sortOrder')

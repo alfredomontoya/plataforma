@@ -27,7 +27,9 @@ class TramiteReportService
     private const HEADERS = [
         'Fecha',
         'Hora',
+        'Tipo',
         'Tipo de trámite',
+        'Ítems de entrega',
         'Nro. placa / póliza',
         'Ticket',
         'Observaciones',
@@ -58,6 +60,7 @@ class TramiteReportService
             'search' => $search,
             'total' => count($rows),
             'activos' => count(array_filter($records, fn ($r) => (bool) ($r['activo'] ?? false))),
+            'itemsSummary' => $this->tramites->entregaItemsSummary($user, $from, $to, $search),
             'generadoEl' => Carbon::now(BusinessDay::TZ_DISPLAY)->format('d/m/Y H:i'),
         ])->render(), 'UTF-8');
         $dompdf->render();
@@ -78,7 +81,7 @@ class TramiteReportService
         $sheet->setTitle('Registros');
         $sheet->setShowGridLines(false);
 
-        $lastColumn = 'I';
+        $lastColumn = 'K';
         $lastRow = 8 + count($rows);
         $headerRow = 8;
 
@@ -122,7 +125,6 @@ class TramiteReportService
         ]);
 
         $sheet->getStyle('A2:A6')->getFont()->setBold(true);
-
         $sheet->getStyle("A{$headerRow}:{$lastColumn}{$headerRow}")->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '44403C']],
@@ -136,7 +138,7 @@ class TramiteReportService
                 ],
                 'alignment' => ['vertical' => Alignment::VERTICAL_TOP, 'wrapText' => true],
             ]);
-            foreach (['A', 'B', 'D', 'E', 'H', 'I'] as $column) {
+            foreach (['A', 'B', 'C', 'F', 'G', 'J', 'K'] as $column) {
                 $sheet->getStyle("{$column}".($headerRow + 1).":{$column}{$lastRow}")
                     ->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             }
@@ -149,7 +151,7 @@ class TramiteReportService
         $sheet->getRowDimension($headerRow)->setRowHeight(22);
         $sheet->freezePane('A'.($headerRow + 1));
 
-        $widths = ['A' => 11, 'B' => 8, 'C' => 27, 'D' => 17, 'E' => 12, 'F' => 33, 'G' => 22, 'H' => 13, 'I' => 9];
+        $widths = ['A' => 11, 'B' => 8, 'C' => 12, 'D' => 27, 'E' => 22, 'F' => 17, 'G' => 12, 'H' => 30, 'I' => 22, 'J' => 13, 'K' => 9];
         foreach ($widths as $column => $width) {
             $sheet->getColumnDimension($column)->setWidth($width);
         }
@@ -196,7 +198,7 @@ class TramiteReportService
     private function excelMeta($sheet, int $row, string $label, string $value): void
     {
         $sheet->setCellValueExplicit("A{$row}", $label, DataType::TYPE_STRING);
-        $sheet->mergeCells("B{$row}:I{$row}");
+        $sheet->mergeCells("B{$row}:K{$row}");
         $sheet->setCellValueExplicit("B{$row}", $value, DataType::TYPE_STRING);
     }
 
@@ -207,7 +209,9 @@ class TramiteReportService
             return [
                 $this->dateLabel(substr((string) ($row['date'] ?? ''), 0, 10)),
                 $this->timeLabel($row['created_at'] ?? null),
+                (string) ($row['tipo_registro']['name'] ?? '—'),
                 (string) ($row['service']['name'] ?? '—'),
+                $this->itemsLabel($row['entrega_items'] ?? []),
                 (string) ($row['placa'] ?? '—'),
                 (string) ($row['ticket'] ?? '—'),
                 (string) ($row['observaciones'] ?? ''),
@@ -216,6 +220,19 @@ class TramiteReportService
                 ! empty($row['activo']) ? 'Activo' : 'Inactivo',
             ];
         }, $records);
+    }
+
+    /** Nombres de los ítems entregados separados por coma. */
+    private function itemsLabel(array $items): string
+    {
+        $names = array_map(
+            fn ($item) => (string) ($item['name'] ?? ''),
+            $items,
+        );
+
+        $names = array_values(array_filter($names, fn ($name) => $name !== ''));
+
+        return $names !== [] ? implode(', ', $names) : '—';
     }
 
     private function estadoLabel(?string $estado): string

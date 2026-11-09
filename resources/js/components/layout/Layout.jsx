@@ -18,6 +18,7 @@ import {
     ServerStackIcon,
     ComputerDesktopIcon,
     XMarkIcon,
+    TagIcon,
 } from '@heroicons/react/24/outline';
 import { useMediaQuery, useSidebarCollapsed, useTheme } from '../../hooks/useUi';
 import { useAuth } from '../../lib/auth';
@@ -49,6 +50,7 @@ const SECTIONS = [
         items: [
             { href: '/admin/usuarios', label: 'Usuarios', icon: UsersIcon, roles: ['ADMIN'] },
             { href: '/admin/servicios', label: 'Servicios', icon: Cog6ToothIcon, roles: ['ADMIN'] },
+            { href: '/admin/tipos-entrega', label: 'Tipos de entrega', icon: TagIcon, roles: ['ADMIN'] },
             { href: '/admin/backups', label: 'Copias de seguridad', icon: ServerStackIcon, roles: ['ADMIN'] },
         ],
     },

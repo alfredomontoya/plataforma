@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\EntregaItem;
 use App\Models\Service;
+use App\Models\TipoRegistro;
 use App\Models\TramiteRegistro;
 use App\Models\User;
 use App\Support\ApiResponse;
@@ -11,6 +13,7 @@ use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Support\Facades\DB;
 
 class TramiteRegistroService
 {
@@ -24,31 +27,17 @@ class TramiteRegistroService
         'recepcionado',
     ];
 
-    public function assertRoleForType(User $user, string $type): void
-    {
-        $map = [
-            'OPERATOR_INGRESO' => Service::TYPE_INGRESO,
-            'OPERATOR_ENTREGA' => Service::TYPE_ENTREGA,
-        ];
-
-        if (in_array($user->role, ['ADMIN', 'JEFE'], true)) {
-            return;
-        }
-
-        if (($map[$user->role] ?? null) !== $type) {
-            throw new HttpResponseException(
-                ApiResponse::error('Su rol no puede registrar este tipo de trámite.', 403)
-            );
-        }
-    }
-
     /**
-     * El ticket es obligatorio para operadores de ingreso y entrega.
+     * El ticket es obligatorio para operadores cuando el tipo de registro lo exige.
      */
-    private function assertTicketRequired(User $user, ?string $ticket): void
-    {
+    private function assertTicketRequired(
+        User $user,
+        ?string $ticket,
+        ?TipoRegistro $tipoRegistro
+    ): void {
         if (
             in_array($user->role, self::ROLES_TICKET_REQUIRED, true)
+            && $tipoRegistro?->requiereTicket !== false
             && ($ticket === null || trim($ticket) === '')
         ) {
             throw new HttpResponseException(
@@ -115,31 +104,49 @@ class TramiteRegistroService
         );
     }
 
-    /** Servicios activos que puede usar el usuario según su rol. */
+    /**
+     * Catálogo único de trámites/procedimientos para ambos tipos de registro.
+     * Incluye los ítems de entrega permitidos por cada trámite.
+     */
     public function catalog(User $user): array
     {
-        $q = Service::where('isActive', true);
-
-        if (!in_array($user->role, ['ADMIN', 'JEFE'], true)) {
-            $q->where(
-                'type',
-                $user->role === 'OPERATOR_ENTREGA'
-                    ? Service::TYPE_ENTREGA
-                    : Service::TYPE_INGRESO
-            );
-        }
-
-        return $q->orderByDesc('type')
+        return Service::where('isActive', true)
+            ->with(['entregaItems' => fn ($q) => $q->where('isActive', true)->orderBy('sortOrder')])
             ->orderBy('sortOrder')
             ->orderBy('name')
-            ->get(['id', 'name', 'codigo', 'abreviation', 'type'])
+            ->get(['id', 'name', 'codigo', 'abreviation', 'type', 'sortOrder'])
             ->map(fn (Service $s) => [
                 'id' => $s->id,
                 'name' => $s->name,
                 'codigo' => $s->codigo,
                 'abreviation' => $s->abreviation,
                 'type' => $s->type,
+                'entregaItems' => $s->entregaItems->map(fn (EntregaItem $i) => [
+                    'id' => $i->id,
+                    'name' => $i->name,
+                    'codigo' => $i->codigo,
+                ])->values()->all(),
             ])
+            ->toArray();
+    }
+
+    /** Tipos de registro activos para el selector. */
+    public function tiposRegistro(): array
+    {
+        return TipoRegistro::active()
+            ->orderBy('sortOrder')
+            ->orderBy('name')
+            ->get(['id', 'name', 'codigo', 'requiereItems', 'requiereTicket', 'sortOrder'])
+            ->toArray();
+    }
+
+    /** Ítems de entrega activos. */
+    public function entregaItemsCatalog(): array
+    {
+        return EntregaItem::active()
+            ->orderBy('sortOrder')
+            ->orderBy('name')
+            ->get(['id', 'name', 'codigo', 'sortOrder'])
             ->toArray();
     }
 
@@ -190,7 +197,7 @@ class TramiteRegistroService
             ->count();
     }
 
-    /** Totales por tipo de trámite. */
+    /** Totales por tipo de trámite y tipo de registro. */
     public function summaryByType(
         User $user,
         string $from,
@@ -200,21 +207,61 @@ class TramiteRegistroService
         return $this->rangeQuery($user, $from, $to, $search)
             ->reorder()
             ->where('activo', true)
-            ->select('serviceId')
+            ->select('serviceId', 'tipoRegistroId')
             ->selectRaw('COUNT(*) as total')
-            ->groupBy('serviceId')
+            ->groupBy('serviceId', 'tipoRegistroId')
             ->orderByDesc('total')
             ->get()
             ->map(fn (TramiteRegistro $row) => [
                 'serviceId' => $row->serviceId,
+                'tipoRegistroId' => $row->tipoRegistroId,
                 'name' => $row->service?->name ?? 'Sin tipo',
                 'codigo' => $row->service?->codigo,
                 'abreviation' => $row->service?->abreviation,
-                'type' => $row->service?->type,
+                'type' => $row->tipoRegistro?->codigo,
+                'tipoRegistro' => $row->tipoRegistro?->name,
                 'total' => (int) $row->total,
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * Conteo de ítems entregados en el periodo.
+     * Solo considera registros activos cuyo tipo de registro requiere ítems.
+     *
+     * @return array<int, array{itemId: string, name: string, codigo: string, total: int}>
+     */
+    public function entregaItemsSummary(
+        User $user,
+        string $from,
+        string $to,
+        ?string $search = null
+    ): array {
+        $start = BusinessDay::parseUtcDay($from);
+        $end = BusinessDay::parseUtcDay($to)->addDay();
+
+        $q = $this->baseQuery($user, $start, $end, $search)
+            ->join('tipo_registros', 'tipo_registros.id', '=', 'tramite_registros.tipoRegistroId')
+            ->join('tramite_registro_entrega_items as tri', 'tri.tramiteRegistroId', '=', 'tramite_registros.id')
+            ->join('entrega_items', 'entrega_items.id', '=', 'tri.entregaItemId')
+            ->where('tramite_registros.activo', true)
+            ->where('tipo_registros.requiereItems', true)
+            ->groupBy('entrega_items.id', 'entrega_items.name', 'entrega_items.codigo', 'entrega_items.sortOrder')
+            ->orderBy('entrega_items.sortOrder')
+            ->orderBy('entrega_items.name');
+
+        return $q->get([
+            'entrega_items.id as itemId',
+            'entrega_items.name as name',
+            'entrega_items.codigo as codigo',
+            DB::raw('COUNT(*) as total'),
+        ])->map(fn ($row) => [
+            'itemId' => $row->itemId,
+            'name' => $row->name,
+            'codigo' => $row->codigo,
+            'total' => (int) $row->total,
+        ])->values()->all();
     }
 
     /** Consulta base compartida por listados y exportaciones. */
@@ -227,14 +274,26 @@ class TramiteRegistroService
         $start = BusinessDay::parseUtcDay($from);
         $end = BusinessDay::parseUtcDay($to)->addDay();
 
-        $q = TramiteRegistro::with([
-            'service:id,name,codigo,abreviation,type',
-            'user:id,username,firstName,lastName,paternalSurname,maternalSurname',
-        ])
-            ->where('date', '>=', $start)
-            ->where('date', '<', $end)
+        return $this->baseQuery($user, $start, $end, $search)
+            ->with([
+                'service:id,name,codigo,abreviation,type',
+                'tipoRegistro:id,name,codigo,requiereItems,requiereTicket',
+                'entregaItems:id,name,codigo,sortOrder',
+                'user:id,username,firstName,lastName,paternalSurname,maternalSurname',
+            ])
             ->orderByDesc('date')
             ->orderByDesc('created_at');
+    }
+
+    private function baseQuery(
+        User $user,
+        Carbon $start,
+        Carbon $end,
+        ?string $search = null
+    ): Builder {
+        $q = TramiteRegistro::query()
+            ->where('date', '>=', $start)
+            ->where('date', '<', $end);
 
         if (!in_array($user->role, ['ADMIN', 'JEFE'], true)) {
             $q->where('userId', $user->id);
@@ -277,8 +336,15 @@ class TramiteRegistroService
                     ->orWhereHas('service', function ($s) use ($like) {
                         $s->where('name', 'like', $like)
                             ->orWhere('codigo', 'like', $like)
-                            ->orWhere('abreviation', 'like', $like)
-                            ->orWhere('type', 'like', $like);
+                            ->orWhere('abreviation', 'like', $like);
+                    })
+                    ->orWhereHas('tipoRegistro', function ($t) use ($like) {
+                        $t->where('name', 'like', $like)
+                            ->orWhere('codigo', 'like', $like);
+                    })
+                    ->orWhereHas('entregaItems', function ($i) use ($like) {
+                        $i->where('name', 'like', $like)
+                            ->orWhere('codigo', 'like', $like);
                     })
                     ->orWhereHas('user', function ($u) use ($like) {
                         $u->where('username', 'like', $like)
@@ -294,13 +360,18 @@ class TramiteRegistroService
     /** Crear un registro. */
     public function create(User $user, array $data): TramiteRegistro
     {
-        $service = $this->assertServiceAllowed($user, $data['serviceId']);
+        $service = $this->assertServiceAllowed($data['serviceId']);
 
-        $this->assertRoleForType($user, $service->type);
+        $tipoRegistro = $this->resolveTipoRegistro(
+            $data['tipoRegistroId'] ?? null,
+            $service,
+            null,
+            true,
+        );
 
         $ticket = $this->normalizeTicket($data['ticket'] ?? null);
 
-        $this->assertTicketRequired($user, $ticket);
+        $this->assertTicketRequired($user, $ticket, $tipoRegistro);
 
         $estado = $data['estado'] ?? 'procesado';
 
@@ -314,19 +385,32 @@ class TramiteRegistroService
 
         $this->assertDateAllowed($user, $day);
 
+        $items = $this->resolveEntregaItems(
+            $service,
+            $tipoRegistro,
+            $data['entregaItems'] ?? [],
+            [],
+            true,
+        );
+
         // La duplicidad solamente genera una advertencia.
         $warning = $this->ticketWarning($ticket);
 
         $registro = TramiteRegistro::create([
             'userId' => $user->id,
             'serviceId' => $service->id,
+            'tipoRegistroId' => $tipoRegistro?->id,
             'date' => $day,
             'placa' => $this->normalizePlaca($data['placa']),
             'observaciones' => $data['observaciones'] ?? null,
             'activo' => $data['activo'] ?? true,
             'ticket' => $ticket,
             'estado' => $estado,
-        ])->fresh(['service', 'user']);
+        ]);
+
+        $registro->entregaItems()->sync($items);
+
+        $registro = $registro->fresh(['service', 'tipoRegistro', 'entregaItems', 'user']);
 
         return $this->attachTicketWarning($registro, $warning);
     }
@@ -346,12 +430,29 @@ class TramiteRegistroService
             );
         }
 
+        $serviceChanged = false;
+
         if (isset($data['serviceId'])) {
-            $service = $this->assertServiceAllowed($user, $data['serviceId']);
-
-            $this->assertRoleForType($user, $service->type);
-
+            $service = $this->assertServiceAllowed($data['serviceId']);
+            $serviceChanged = $service->id !== $registro->serviceId;
             $registro->serviceId = $service->id;
+        }
+
+        $service = $serviceChanged || ! $registro->service
+            ? Service::findOrFail($registro->serviceId)
+            : $registro->service;
+
+        if (array_key_exists('tipoRegistroId', $data) || $serviceChanged) {
+            $tipoRegistro = $this->resolveTipoRegistro(
+                $data['tipoRegistroId'] ?? null,
+                $service,
+                $registro->tipoRegistro,
+                false,
+            );
+
+            $registro->tipoRegistroId = $tipoRegistro?->id;
+        } else {
+            $tipoRegistro = $registro->tipoRegistro;
         }
 
         if (isset($data['date'])) {
@@ -378,10 +479,12 @@ class TramiteRegistroService
             $registro->ticket = $this->normalizeTicket($data['ticket']);
         }
 
-        // Para operadores, se exige que el ticket final no esté vacío.
+        // Para operadores, se exige que el ticket final no esté vacío
+        // cuando el tipo de registro lo requiere.
         $this->assertTicketRequired(
             $user,
-            $registro->ticket
+            $registro->ticket,
+            $tipoRegistro
         );
 
         if (array_key_exists('estado', $data)) {
@@ -402,7 +505,25 @@ class TramiteRegistroService
 
         $registro->save();
 
-        $registro = $registro->fresh(['service', 'user']);
+        if (
+            array_key_exists('entregaItems', $data)
+            || array_key_exists('tipoRegistroId', $data)
+            || $serviceChanged
+        ) {
+            $current = $registro->entregaItems()->pluck('entrega_items.id')->all();
+
+            $items = $this->resolveEntregaItems(
+                $service,
+                $tipoRegistro,
+                $data['entregaItems'] ?? [],
+                $current,
+                false,
+            );
+
+            $registro->entregaItems()->sync($items);
+        }
+
+        $registro = $registro->fresh(['service', 'tipoRegistro', 'entregaItems', 'user']);
 
         return $this->attachTicketWarning($registro, $warning);
     }
@@ -414,22 +535,19 @@ class TramiteRegistroService
         User $user,
         TramiteRegistro $registro
     ): TramiteRegistro {
-        if (
-            !in_array($user->role, ['ADMIN', 'JEFE'], true)
-            && $registro->userId !== $user->id
-        ) {
+        if (!in_array($user->role, ['ADMIN', 'JEFE'], true)) {
             throw new HttpResponseException(
-                ApiResponse::error('No puede eliminar un registro de otro usuario.', 403)
+                ApiResponse::error('No tiene permiso para eliminar registros. Solo puede editarlos.', 403)
             );
         }
 
         $registro->activo = false;
         $registro->save();
 
-        return $registro->fresh(['service', 'user']);
+        return $registro->fresh(['service', 'tipoRegistro', 'entregaItems', 'user']);
     }
 
-    private function assertServiceAllowed(User $user, string $id): Service
+    private function assertServiceAllowed(string $id): Service
     {
         $service = Service::where('isActive', true)->find($id);
 
@@ -439,19 +557,89 @@ class TramiteRegistroService
             );
         }
 
-        if (!in_array($user->role, ['ADMIN', 'JEFE'], true)) {
-            $expected = $user->role === 'OPERATOR_ENTREGA'
-                ? Service::TYPE_ENTREGA
-                : Service::TYPE_INGRESO;
+        return $service;
+    }
 
-            if ($service->type !== $expected) {
-                throw new HttpResponseException(
-                    ApiResponse::error('Su rol no puede registrar este tipo de trámite.', 403)
-                );
+    /**
+     * Resuelve el tipo de registro. Si no se envía, se deriva del tipo del
+     * servicio (compatibilidad con clientes anteriores).
+     */
+    private function resolveTipoRegistro(
+        ?string $id,
+        Service $service,
+        ?TipoRegistro $current,
+        bool $requireActive,
+    ): ?TipoRegistro {
+        if ($id === null || $id === '') {
+            if ($current && $current->codigo === $service->type) {
+                return $current;
             }
+
+            return TipoRegistro::where('codigo', $service->type)->first();
         }
 
-        return $service;
+        $tipo = TipoRegistro::find($id);
+
+        if (! $tipo || ($requireActive && ! $tipo->isActive)) {
+            throw new HttpResponseException(
+                ApiResponse::error('El tipo de registro no existe o no está activo.', 400)
+            );
+        }
+
+        return $tipo;
+    }
+
+    /**
+     * Valida y normaliza los ítems entregados.
+     *
+     * @param  array<int, string>  $selected
+     * @param  array<int, string>  $current  Ítems que ya tenía el registro (edición).
+     * @return array<int, string> IDs a sincronizar.
+     */
+    private function resolveEntregaItems(
+        Service $service,
+        ?TipoRegistro $tipoRegistro,
+        array $selected,
+        array $current,
+        bool $requireActiveItems,
+    ): array {
+        if (! $tipoRegistro || ! $tipoRegistro->requiereItems) {
+            return [];
+        }
+
+        $allowed = $service->entregaItems()
+            ->where('entrega_items.isActive', true)
+            ->pluck('entrega_items.id')
+            ->all();
+
+        // Sin configuración explícita: se permiten todos los ítems activos.
+        if ($allowed === []) {
+            $allowed = EntregaItem::active()->pluck('id')->all();
+        }
+
+        // En edición se conservan los ítems históricos aunque ya no estén permitidos.
+        $permitted = array_values(array_unique(array_merge($allowed, $current)));
+
+        $selected = array_values(array_unique(array_filter(
+            array_map(fn ($id) => (string) $id, $selected),
+            fn ($id) => $id !== '',
+        )));
+
+        if ($selected === []) {
+            throw new HttpResponseException(
+                ApiResponse::error('Debe seleccionar al menos un ítem de entrega.', 422)
+            );
+        }
+
+        $invalid = array_diff($selected, $permitted);
+
+        if ($invalid !== []) {
+            throw new HttpResponseException(
+                ApiResponse::error('Uno o más ítems de entrega no están permitidos para este trámite.', 422)
+            );
+        }
+
+        return $selected;
     }
 
     /** Alfanumérico sin espacios, en mayúsculas. */

@@ -1,7 +1,9 @@
 <?php
 
 use App\Http\Controllers\Admin\BackupController;
+use App\Http\Controllers\Admin\EntregaItemController;
 use App\Http\Controllers\Admin\ServiceController;
+use App\Http\Controllers\Admin\TipoRegistroController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Jefe\DashboardController;
@@ -42,7 +44,30 @@ Route::prefix('services')->group(function () {
         Route::get('/{id}', [ServiceController::class, 'show']);
         Route::patch('/{id}', [ServiceController::class, 'update']);
         Route::delete('/{id}', [ServiceController::class, 'destroy']);
+        Route::put('/{id}/entrega-items', [ServiceController::class, 'updateEntregaItems']);
     });
+});
+
+Route::get('/tipos-registro', [TipoRegistroController::class, 'active'])
+    ->middleware(['auth:sanctum', 'role:ADMIN|JEFE|OPERATOR_INGRESO|OPERATOR_ENTREGA']);
+
+Route::prefix('tipos-registro/admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(function () {
+    Route::get('/', [TipoRegistroController::class, 'index']);
+    Route::post('/', [TipoRegistroController::class, 'store']);
+    Route::get('/{id}', [TipoRegistroController::class, 'show']);
+    Route::patch('/{id}', [TipoRegistroController::class, 'update']);
+    Route::delete('/{id}', [TipoRegistroController::class, 'destroy']);
+});
+
+Route::get('/entrega-items', [EntregaItemController::class, 'active'])
+    ->middleware(['auth:sanctum', 'role:ADMIN|JEFE|OPERATOR_INGRESO|OPERATOR_ENTREGA']);
+
+Route::prefix('entrega-items/admin')->middleware(['auth:sanctum', 'role:ADMIN'])->group(function () {
+    Route::get('/', [EntregaItemController::class, 'index']);
+    Route::post('/', [EntregaItemController::class, 'store']);
+    Route::get('/{id}', [EntregaItemController::class, 'show']);
+    Route::patch('/{id}', [EntregaItemController::class, 'update']);
+    Route::delete('/{id}', [EntregaItemController::class, 'destroy']);
 });
 
 Route::prefix('tramites')

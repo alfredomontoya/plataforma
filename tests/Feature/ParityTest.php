@@ -31,7 +31,7 @@ class ParityTest extends TestCase
     public function test_rutas_web_renderizan(): void
     {
         foreach (['/login', '/operador/entrada', '/admin/usuarios', '/admin/servicios',
-            '/jefe/dashboard', '/jefe/reportes', '/jefe/reportes/historial'] as $uri) {
+            '/admin/tipos-entrega', '/jefe/dashboard', '/jefe/reportes', '/jefe/reportes/historial'] as $uri) {
             $this->get($uri)->assertOk();
         }
         $this->get('/')->assertRedirect('/operador/entrada');
