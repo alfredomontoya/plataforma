@@ -34,8 +34,9 @@ composer setup     # install + .env + key + migrate + build
 composer dev       # serve + queue + logs + vite en paralelo
 ```
 
-En este equipo la aplicación se sirve en `http://splaadm23p-10:8084`, así que
-`APP_URL` debe incluir el puerto.
+En este equipo la URL oficial es `https://splaadm23p-10:8084`. El puerto 443
+redirige ahí para no tener dos orígenes distintos. Recuerda incluir el puerto en
+`APP_URL`.
 
 ## Producción
 
@@ -77,8 +78,9 @@ php artisan optimize
 
 - Base de datos: `plataforma-pro`, usuario MySQL `galileo_app` (solo permisos
   sobre esa base).
-- URL pública: `https://splaadm23p-10` (puerto 443). El puerto 8084 solo
-  responde con un `301` hacia HTTPS.
+- URL pública: `https://splaadm23p-10:8084` (URL oficial). El puerto 443 solo
+  responde con un `301` hacia ella para que no haya dos orígenes; el 8084 habla
+  únicamente HTTPS.
 - Respaldo del entorno de desarrollo anterior: `.env.backup` (ignorado por git).
 - Respaldos de BD y `storage/app/private` en `C:\wamp64\backups\`.
 
@@ -87,27 +89,52 @@ php artisan optimize
 El certificado lo emite una CA local de [mkcert](https://github.com/FiloSottile/mkcert):
 
 - Certificado: `C:\wamp64\bin\apache\apache2.4.65\conf\ssl\galileo.crt`
-  (clave privada `galileo.key`), con SAN para `splaadm23p-10`, `localhost`,
+  (clave privada `galileo.key`), con SAN para `splaadm23p-10`,
+  `splaadm23p-10.gmsantacruz.gov.bo`, `localhost`, `10.80.2.230`,
   `172.16.0.2`, `127.0.0.1` y `::1`.
-- Vhost: `conf\extra\httpd-ssl-galileo.conf`, incluido desde `httpd.conf`.
-- CA local para distribuir: `C:\wamp64\backups\mkcert-rootCA.pem`.
+- Vhost principal: `conf\extra\httpd-vhosts.conf` (`*:8084`), el que sirve la
+  aplicación. `conf\extra\httpd-ssl-galileo.conf` (`*:443`) solo redirige.
+- CA local para distribuir: `C:\wamp64\backups\mkcert-rootCA.pem`
+  (copia lista para instalar: `C:\wamp64\backups\mkcert-rootCA.crt`).
 
 En cada PC cliente, instalar la CA una sola vez (sin esto el navegador muestra
-advertencia de certificado):
+advertencia de certificado). Se puede descargar desde el propio servidor:
 
-```powershell
-certutil -addstore -f Root mkcert-rootCA.pem   # ejecutar como administrador
+```
+https://splaadm23p-10:8084/mkcert-rootCA.crt
 ```
 
-También sirve doble clic en `mkcert-rootCA.pem` → *Instalar certificado* →
-*Equipo local* → *Entidades de certificación raíz de confianza*.
+El primer acceso muestra la advertencia de certificado (es justo el que falta
+instalar): *Avanzado* → *Continuar a splaadm23p-10 (no seguro)*. Chrome puede
+pedir una confirmación extra para descargar desde un sitio no confiable; si lo
+bloquea, usar Edge o copiar el archivo por USB desde
+`C:\wamp64\backups\mkcert-rootCA.crt`.
+
+Luego doble clic → *Instalar certificado* → *Equipo local* → *Entidades de
+certificación raíz de confianza*. O por PowerShell como administrador:
+
+```powershell
+certutil -addstore -f Root mkcert-rootCA.crt
+```
+
+El archivo se sirve como estático desde `public/mkcert-rootCA.crt` (ignorado por
+git). Solo se publica el certificado público; la clave `rootCA-key.pem` nunca
+sale del servidor.
+
+La CA no cambia al regenerar el certificado del servidor, así que solo se
+instala una vez en cada equipo.
+
+La aplicación envía `Strict-Transport-Security` en respuestas HTTPS, de modo
+que el navegador convierte solo `http://splaadm23p-10:8084` en
+`https://splaadm23p-10:8084`.
 
 El certificado caduca el **10/02/2029**. Para renovarlo:
 
 ```powershell
 mkcert -cert-file C:\wamp64\bin\apache\apache2.4.65\conf\ssl\galileo.crt `
        -key-file  C:\wamp64\bin\apache\apache2.4.65\conf\ssl\galileo.key `
-       splaadm23p-10 localhost 172.16.0.2 127.0.0.1 ::1
+       splaadm23p-10 splaadm23p-10.gmsantacruz.gov.bo 10.80.2.230 `
+       172.16.0.2 localhost 127.0.0.1 ::1
 Restart-Service wampapache64
 ```
 

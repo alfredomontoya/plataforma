@@ -52,8 +52,8 @@ export default function Login() {
                     </div>
                     <h1 className="text-xl font-bold text-primary-700 dark:text-primary-300">{APP_NAME}</h1>
                 </div>
-                <Input label="Usuario" value={username} onChange={(e) => setUsername(e.target.value)} required />
-                <PasswordInput label="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                <Input label="Usuario" value={username} onChange={(e) => setUsername(e.target.value)} required placeholder="Ingrese usuario" />
+                <PasswordInput label="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="Ingrese contraseña" />
                 <Button type="submit" loading={loading} className="w-full">
                     Ingresar
                 </Button>
