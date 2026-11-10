@@ -74,44 +74,22 @@
   @apply bg-stone-200 text-stone-700 dark:bg-white/10 dark:text-wa-muted;
 }
 
-/* Logo login: motor en marcha (vibración) + avance (zoom + líneas de velocidad + resplandor). */
-.car-run {
-  position: relative;
-  animation: car-surge 2.6s ease-in-out infinite;
+/* Logo login: giro 3D suave sobre el eje vertical (ida y vuelta). */
+.logo-sway {
+  perspective: 600px;
 }
-.car-run .car-body {
-  animation: engine-idle 0.32s linear infinite;
+.logo-sway__inner {
+  transform-style: preserve-3d;
+  will-change: transform;
+  animation: logo-sway 4s ease-in-out infinite alternate;
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.18));
 }
-.car-run .car-lines line {
-  stroke-dasharray: 7 12;
-  animation: lines-out 0.9s linear infinite;
-}
-.car-run .car-glow {
-  animation: glow-pulse 2.6s ease-in-out infinite;
-}
-@keyframes engine-idle {
-  0% { transform: translate(0, 0) rotate(0); }
-  25% { transform: translate(0.8px, -0.6px) rotate(0.4deg); }
-  50% { transform: translate(-0.7px, 0.5px) rotate(-0.4deg); }
-  75% { transform: translate(0.6px, 0.7px) rotate(0.3deg); }
-  100% { transform: translate(0, 0) rotate(0); }
-}
-@keyframes car-surge {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.06); }
-}
-@keyframes lines-out {
-  to { stroke-dashoffset: -19; }
-}
-@keyframes glow-pulse {
-  0%, 100% { opacity: 0.45; transform: scaleX(1); }
-  50% { opacity: 0.85; transform: scaleX(1.12); }
+@keyframes logo-sway {
+  from { transform: rotateY(-28deg) scale(0.97); }
+  to   { transform: rotateY(28deg)  scale(0.97); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .car-run,
-  .car-run .car-body,
-  .car-run .car-lines line,
-  .car-run .car-glow {
+  .logo-sway__inner {
     animation: none;
   }
 }
