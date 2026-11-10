@@ -19,7 +19,7 @@ class UsersSeeder extends Seeder
 
         $base = [
             // username, role, firstName, lastName, paternalSurname, maternalSurname
-
+            ['amontoya', 'ADMIN', 'Alfredo', 'Montoya', 'Calderon', null],
             ['arodriguez', 'OPERATOR_INGRESO', 'Alfredo', 'Rodriguez', 'Maldonado', null],
             ['rsuarez', 'OPERATOR_INGRESO', 'Robin', 'Suarez', 'Ribera', null],
             ['bayllon', 'OPERATOR_INGRESO', 'Beymar Fernando', 'Ayllon', 'Camacho', null],

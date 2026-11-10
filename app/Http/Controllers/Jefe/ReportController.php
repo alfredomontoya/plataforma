@@ -8,6 +8,7 @@ use App\Models\Report;
 use App\Services\ReportService;
 use App\Support\ApiResponse;
 use App\Support\BusinessDay;
+use App\Support\LikeSearch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Process;
@@ -45,10 +46,10 @@ class ReportController extends Controller
         $limit = min(max((int) $request->query('limit', 10), 1), 100);
         $q = Report::with(['template', 'generatedBy']);
 
-        if ($search = $request->query('search')) {
-            $q->where(fn ($w) => $w->where('nroCI', 'like', "%{$search}%")
-                ->orWhere('dirigidoA', 'like', "%{$search}%")
-                ->orWhere('fileName', 'like', "%{$search}%"));
+        if ($like = LikeSearch::contains($request->query('search'))) {
+            $q->where(fn ($w) => $w->where('nroCI', 'like', $like)
+                ->orWhere('dirigidoA', 'like', $like)
+                ->orWhere('fileName', 'like', $like));
         }
         // Filtros por día calendario Bolivia (UTC-4) sobre createdAt
         foreach (['from', 'to', 'date'] as $f) {

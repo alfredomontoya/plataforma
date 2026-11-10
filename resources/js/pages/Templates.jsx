@@ -10,10 +10,11 @@ const MARCADORES = [
     'GRAFICO_TENDENCIA_DIA',
 ];
 import { renderAsync } from 'docx-preview';
-import api, { todayLocal, toLocalDay } from '../lib/api';
+import api, { isCanceled, todayLocal, toLocalDay } from '../lib/api';
+import { useDebouncedSearch } from '../hooks/useDebouncedSearch';
 import { saveBlob, sanitizeLinks } from '../lib/reportShared';
 import { RoleGuard } from '../components/layout/RoleGuard';
-import { Button, Input, Modal } from '../components/ui/controls';
+import { Button, Input, Modal, SearchInput } from '../components/ui/controls';
 import WordSheet from '../components/WordSheet';
 import { useToast } from '../components/ui/Toast';
 
@@ -55,7 +56,7 @@ const mondayLocal = () => {
 export default function Templates() {
     const { toastSuccess, toastError } = useToast();
     const [templates, setTemplates] = useState([]);
-    const [search, setSearch] = useState('');
+    const { input: searchInput, setInput: setSearchInput, query: search, pending: searchPending, clear: clearSearch } = useDebouncedSearch();
     const [upload, setUpload] = useState({ name: '', file: null });
     const [selected, setSelected] = useState(null);
     const [inspect, setInspect] = useState(null);
@@ -67,36 +68,42 @@ export default function Templates() {
     const [examplePdf, setExamplePdf] = useState(null);
     const [newPara, setNewPara] = useState('');
     const [marker, setMarker] = useState('FECHA');
+    const [loading, setLoading] = useState(false);
+    const [refreshKey, setRefreshKey] = useState(0);
     const exampleRef = useRef(null);
     const areaRefs = useRef({});
 
-    const load = async () => {
-        try {
-            const r = await api.get('/templates', { params: { limit: 50, search } });
-            const rows = r.data.data ?? [];
-            setTemplates(rows);
-            // Al entrar, se preselecciona la plantilla por defecto para editarla.
-            setSelected((prev) => {
-                if (prev) return rows.find((t) => t.id === prev.id) || null;
-                return rows.find((t) => t.isDefault) || null;
-            });
-            if (selected) {
-                const still = rows.find((t) => t.id === selected.id);
-                setSelected(still || null);
-                if (!still) {
-                    setInspect(null);
-                    setParagraphs([]);
-                }
-            }
-        } catch {
-            toastError('No se pudo cargar plantillas.');
-        }
-    };
+    const reload = () => setRefreshKey((key) => key + 1);
 
     useEffect(() => {
-        load();
+        const controller = new AbortController();
+        setLoading(true);
+
+        api.get('/templates', {
+            params: { limit: 50, ...(search ? { search } : {}) },
+            signal: controller.signal,
+        })
+            .then((r) => {
+                const rows = r.data?.data ?? [];
+                setTemplates(rows);
+                // Conserva la selección si sigue visible; si no, usa la predeterminada.
+                setSelected((prev) => {
+                    if (prev) return rows.find((t) => t.id === prev.id) || null;
+                    return rows.find((t) => t.isDefault) || null;
+                });
+            })
+            .catch((err) => {
+                if (isCanceled(err)) return;
+                setTemplates([]);
+                toastError('No se pudo cargar plantillas.');
+            })
+            .finally(() => {
+                if (!controller.signal.aborted) setLoading(false);
+            });
+
+        return () => controller.abort();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [search, refreshKey]);
 
     useEffect(() => {
         if (!selected) return;
@@ -123,7 +130,7 @@ export default function Templates() {
             await api.post('/templates', { name: upload.name.trim(), file: upload.file }, { headers: { 'Content-Type': 'multipart/form-data' } });
             setUpload({ name: '', file: null });
             toastSuccess('Plantilla subida.');
-            load();
+            reload();
         } catch (err) {
             toastError(err.response?.data?.error || 'Error al subir.');
         } finally {
@@ -144,7 +151,7 @@ export default function Templates() {
         try {
             await api.post(`/templates/${t.id}/duplicate`);
             toastSuccess('Plantilla duplicada.');
-            load();
+            reload();
         } catch {
             toastError('No se pudo duplicar.');
         }
@@ -159,7 +166,7 @@ export default function Templates() {
                 setInspect(null);
                 setParagraphs([]);
             }
-            load();
+            reload();
         } catch (err) {
             toastError(err.response?.data?.error || 'No se pudo eliminar.');
         }
@@ -169,7 +176,7 @@ export default function Templates() {
         try {
             await api.patch(`/templates/${t.id}/default`);
             toastSuccess('Actualizada.');
-            load();
+            reload();
         } catch {
             toastError('No se pudo actualizar.');
         }
@@ -297,24 +304,39 @@ export default function Templates() {
                 <div className="card space-y-3 p-4">
                     <h1 className="text-base font-semibold">Plantillas</h1>
                     <div className="flex flex-wrap items-end gap-2">
-                        <Input label="Buscar" value={search} onChange={(e) => setSearch(e.target.value)} />
-                        <Button size="sm" onClick={load}>Filtrar</Button>
-                    </div>
-                    {templates.map((t) => (
-                        <div
-                            key={t.id}
-                            onClick={() => setSelected(t)}
-                            className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2 text-sm ${selected?.id === t.id ? 'border-primary-400 bg-primary-50 dark:bg-primary-900/20' : 'border-stone-200 dark:border-white/10'}`}
-                        >
-                            <span>{t.name} {t.isDefault && <span className="badge badge-primary ml-1">Por defecto</span>}</span>
-                            <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                                {!t.isDefault && <Button size="sm" variant="secondary" onClick={() => doDefault(t)}>Por defecto</Button>}
-                                <Button size="sm" variant="secondary" onClick={() => doDownload(t)}>Descargar</Button>
-                                <Button size="sm" variant="secondary" onClick={() => doDuplicate(t)}>Duplicar</Button>
-                                <Button size="sm" variant="danger" onClick={() => doDelete(t)}>Eliminar</Button>
-                            </div>
+                        <div className="min-w-[16rem] flex-1">
+                            <span className="mb-1 block text-sm font-medium">Buscar</span>
+                            <SearchInput
+                                value={searchInput}
+                                onChange={(e) => setSearchInput(e.target.value)}
+                                onClear={clearSearch}
+                                loading={searchPending}
+                                placeholder="Nombre o archivo…"
+                            />
                         </div>
-                    ))}
+                    </div>
+                    <div className={`space-y-2 transition-opacity ${loading && templates.length > 0 ? 'opacity-60' : ''}`} aria-busy={loading}>
+                        {templates.map((t) => (
+                            <div
+                                key={t.id}
+                                onClick={() => setSelected(t)}
+                                className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2 text-sm ${selected?.id === t.id ? 'border-primary-400 bg-primary-50 dark:bg-primary-900/20' : 'border-stone-200 dark:border-white/10'}`}
+                            >
+                                <span>{t.name} {t.isDefault && <span className="badge badge-primary ml-1">Por defecto</span>}</span>
+                                <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                                    {!t.isDefault && <Button size="sm" variant="secondary" onClick={() => doDefault(t)}>Por defecto</Button>}
+                                    <Button size="sm" variant="secondary" onClick={() => doDownload(t)}>Descargar</Button>
+                                    <Button size="sm" variant="secondary" onClick={() => doDuplicate(t)}>Duplicar</Button>
+                                    <Button size="sm" variant="danger" onClick={() => doDelete(t)}>Eliminar</Button>
+                                </div>
+                            </div>
+                        ))}
+                        {templates.length === 0 && (
+                            <p className="text-sm text-stone-500 dark:text-wa-muted">
+                                {loading ? 'Cargando plantillas…' : search ? 'No hay plantillas que coincidan con la búsqueda.' : 'Sin plantillas registradas.'}
+                            </p>
+                        )}
+                    </div>
                     <form onSubmit={doUpload} className="flex flex-wrap items-end gap-2">
                         <Input label="Nombre" value={upload.name} onChange={(e) => setUpload({ ...upload, name: e.target.value })} required />
                         <input type="file" accept=".docx" onChange={(e) => setUpload({ ...upload, file: e.target.files[0] })} className="text-sm" />

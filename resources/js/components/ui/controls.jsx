@@ -68,7 +68,7 @@ export function Select({ label, options = [], error, placeholder, ...props }) {
     );
 }
 
-export function SearchInput({ value, onChange, onClear, placeholder = 'Buscar…', className = '', ...props }) {
+export function SearchInput({ value, onChange, onClear, placeholder = 'Buscar…', loading = false, className = '', ...props }) {
     return (
         <div className={`relative ${className}`}>
             <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
@@ -78,10 +78,16 @@ export function SearchInput({ value, onChange, onClear, placeholder = 'Buscar…
                 onChange={onChange}
                 placeholder={placeholder}
                 aria-label={props['aria-label'] || placeholder}
+                aria-busy={loading || undefined}
                 className="w-full rounded-lg border border-stone-300 bg-white py-2 pl-9 pr-9 text-sm outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-white/10 dark:bg-wa-header"
                 {...props}
             />
-            {value ? (
+            {loading ? (
+                <span
+                    aria-hidden="true"
+                    className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin rounded-full border-2 border-stone-300 border-t-primary-600 dark:border-white/20 dark:border-t-primary-400"
+                />
+            ) : value ? (
                 <button
                     type="button"
                     onClick={onClear}

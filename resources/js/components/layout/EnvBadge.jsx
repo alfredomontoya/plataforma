@@ -1,7 +1,7 @@
 import { usePage } from '@inertiajs/react';
 
 /**
- * Badge de entorno (Desarrollo/Producción) con el nombre de la base de datos.
+ * Badge de entorno (Desarrollo/Producción).
  * Datos desde las props compartidas de Inertia (disponible también en login).
  */
 export default function EnvBadge({ collapsed = false, className = '' }) {
@@ -10,7 +10,7 @@ export default function EnvBadge({ collapsed = false, className = '' }) {
 
     const isProd = !!env.isProduction;
     const label = isProd ? 'Producción' : 'Desarrollo';
-    const title = `${label} · Base de datos: ${env.db || '—'}`;
+    const title = label;
 
     if (collapsed) {
         return (
@@ -33,7 +33,6 @@ export default function EnvBadge({ collapsed = false, className = '' }) {
             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isProd ? 'bg-emerald-500' : 'bg-amber-500'}`} />
             <span className="truncate">
                 {label}
-                {env.db ? ` · BD: ${env.db}` : ''}
             </span>
         </span>
     );

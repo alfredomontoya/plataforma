@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { ArrowsUpDownIcon, BriefcaseIcon, ChevronDownIcon, ChevronUpIcon, EyeIcon, KeyIcon, PencilSquareIcon, PowerIcon } from '@heroicons/react/24/outline';
-import api from '../lib/api';
+import api, { isCanceled } from '../lib/api';
+import { useDebouncedSearch } from '../hooks/useDebouncedSearch';
 import { RoleGuard } from '../components/layout/RoleGuard';
-import { Button, Input, Modal, PasswordInput, Select } from '../components/ui/controls';
+import { Button, Input, Modal, PasswordInput, SearchInput, Select } from '../components/ui/controls';
 import { useToast } from '../components/ui/Toast';
 
 const COLS = [
@@ -21,7 +22,9 @@ export default function Users() {
     const [totalPages, setTotalPages] = useState(1);
     const [page, setPage] = useState(1);
     const limit = 20;
-    const [search, setSearch] = useState('');
+    const { input: searchInput, setInput: setSearchInput, query: search, pending: searchPending, clear: clearSearch } = useDebouncedSearch('', {
+        onCommit: () => setPage(1),
+    });
     const [role, setRole] = useState('');
     const [active, setActive] = useState('');
     const [sortBy, setSortBy] = useState('createdAt');
@@ -29,24 +32,64 @@ export default function Users() {
     const [modal, setModal] = useState(null);
     const [form, setForm] = useState({});
     const [viewUser, setViewUser] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [refreshKey, setRefreshKey] = useState(0);
 
-    const load = async () => {
-        try {
-            const r = await api.get('/users', {
-                params: { search, role, isActive: active, page, limit, sortBy, sortOrder },
-            });
-            setRows(r.data.data);
-            setTotal(r.data.total ?? 0);
-            setTotalPages(r.data.totalPages);
-        } catch {
-            toastError('No se pudo cargar usuarios.');
-        }
+    const reload = () => setRefreshKey((key) => key + 1);
+
+    const changeRole = (value) => {
+        setRole(value);
+        setPage(1);
+    };
+
+    const changeActive = (value) => {
+        setActive(value);
+        setPage(1);
     };
 
     useEffect(() => {
-        load();
+        const controller = new AbortController();
+        setLoading(true);
+
+        api.get('/users', {
+            params: {
+                ...(search ? { search } : {}),
+                ...(role ? { role } : {}),
+                ...(active !== '' ? { isActive: active } : {}),
+                page,
+                limit,
+                sortBy,
+                sortOrder,
+            },
+            signal: controller.signal,
+        })
+            .then((r) => {
+                const payload = r.data ?? {};
+                const lastPage = Math.max(1, payload.totalPages ?? 1);
+
+                if ((payload.page ?? page) > lastPage) {
+                    setPage(lastPage);
+                    return;
+                }
+
+                setRows(payload.data ?? []);
+                setTotal(payload.total ?? 0);
+                setTotalPages(lastPage);
+            })
+            .catch((err) => {
+                if (isCanceled(err)) return;
+                setRows([]);
+                setTotal(0);
+                setTotalPages(1);
+                toastError('No se pudo cargar usuarios.');
+            })
+            .finally(() => {
+                if (!controller.signal.aborted) setLoading(false);
+            });
+
+        return () => controller.abort();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [page, sortBy, sortOrder]);
+    }, [search, role, active, page, sortBy, sortOrder, refreshKey]);
 
     const toggleSort = (col) => {
         if (sortBy === col) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -69,7 +112,7 @@ export default function Users() {
             else await api.patch(`/users/${form.id}`, form);
             setModal(null);
             toastSuccess('Guardado.');
-            load();
+            reload();
         } catch (err) {
             toastError(err.response?.data?.error || 'Error al guardar.');
         }
@@ -81,7 +124,7 @@ export default function Users() {
             await api.patch(`/users/${form.id}/position`, { position: form.position, department: form.department, title: form.title });
             setModal(null);
             toastSuccess('Cargo actualizado.');
-            load();
+            reload();
         } catch (err) {
             toastError(err.response?.data?.error || 'Error.');
         }
@@ -92,7 +135,7 @@ export default function Users() {
             await api.delete(`/users/${form.id}`);
             setModal(null);
             toastSuccess('Usuario desactivado.');
-            load();
+            reload();
         } catch {
             toastError('Error al desactivar.');
         }
@@ -132,21 +175,29 @@ export default function Users() {
         <RoleGuard allowed={['ADMIN']}>
             <div className="card space-y-4 p-5">
                 <div className="flex flex-wrap items-end gap-3">
-                    <Input label="Buscar" value={search} onChange={(e) => setSearch(e.target.value)} />
-                    <Select label="Rol" value={role} onChange={(e) => setRole(e.target.value)} options={[{ value: '', label: 'Todos' }, 'ADMIN', 'OPERATOR_INGRESO', 'OPERATOR_ENTREGA', 'JEFE'].map((r) => (typeof r === 'string' ? { value: r, label: r } : r))} />
-                    <Select label="Estado" value={active} onChange={(e) => setActive(e.target.value)} options={[{ value: '', label: 'Todos' }, { value: 'true', label: 'Activos' }, { value: 'false', label: 'Inactivos' }]} />
-                    <Button onClick={() => { setPage(1); load(); }}>Filtrar</Button>
+                    <div className="min-w-[16rem] flex-1">
+                        <span className="mb-1 block text-sm font-medium">Buscar</span>
+                        <SearchInput
+                            value={searchInput}
+                            onChange={(e) => setSearchInput(e.target.value)}
+                            onClear={clearSearch}
+                            loading={searchPending}
+                            placeholder="Usuario, nombre o apellido…"
+                        />
+                    </div>
+                    <Select label="Rol" value={role} onChange={(e) => changeRole(e.target.value)} options={[{ value: '', label: 'Todos' }, 'ADMIN', 'OPERATOR_INGRESO', 'OPERATOR_ENTREGA', 'JEFE'].map((r) => (typeof r === 'string' ? { value: r, label: r } : r))} />
+                    <Select label="Estado" value={active} onChange={(e) => changeActive(e.target.value)} options={[{ value: '', label: 'Todos' }, { value: 'true', label: 'Activos' }, { value: 'false', label: 'Inactivos' }]} />
                     <Button variant="secondary" onClick={openNew}>Nuevo</Button>
                 </div>
                 <div className="overflow-auto">
-                    <table className="table">
+                    <table className="table" aria-busy={loading}>
                         <thead>
                             <tr>
                                 {COLS.map(([k, l]) => th(k, l))}
                                 <th className="text-center">Acciones</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody className={loading ? 'opacity-60 transition-opacity' : ''}>
                             {rows.map((u) => (
                                 <tr key={u.id}>
                                     <td className="font-mono">{u.username}</td>
@@ -169,6 +220,13 @@ export default function Users() {
                                     </td>
                                 </tr>
                             ))}
+                            {rows.length === 0 && (
+                                <tr>
+                                    <td colSpan={COLS.length + 1} className="text-sm text-stone-500 dark:text-wa-muted">
+                                        {loading ? 'Cargando…' : (search || role || active) ? 'Sin resultados.' : 'Sin usuarios registrados.'}
+                                    </td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>

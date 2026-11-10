@@ -19,6 +19,9 @@ api.interceptors.response.use(
     },
 );
 
+/** Petición cancelada intencionalmente (búsqueda reemplazada por otra). */
+export const isCanceled = (err) => err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError';
+
 export const toLocalDay = (d) => {
     const pad = (n) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;

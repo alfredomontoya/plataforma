@@ -98,6 +98,8 @@ class UserController extends Controller
     {
         $user = User::findOrFail($id);
         $user->update(['isActive' => false]);
+        // (SEC-003) Un usuario desactivado no debe conservar tokens válidos.
+        $user->tokens()->delete();
 
         return ApiResponse::ok(['message' => 'Usuario desactivado.']);
     }

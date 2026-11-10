@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { renderAsync } from 'docx-preview';
-import api, { todayLocal } from '../lib/api';
+import api, { isCanceled, todayLocal } from '../lib/api';
+import { useDebouncedSearch } from '../hooks/useDebouncedSearch';
 import { saveBlob, sanitizeLinks } from '../lib/reportShared';
 import { RoleGuard } from '../components/layout/RoleGuard';
-import { Button, DatePicker, Input, Modal } from '../components/ui/controls';
+import { Button, DatePicker, Modal, SearchInput } from '../components/ui/controls';
 import { useToast } from '../components/ui/Toast';
 
 const MODE_LABEL = { DAY: 'Diario', WEEK: 'Semanal', RANGE: 'Rango' };
@@ -35,27 +36,44 @@ export default function History() {
     const [rows, setRows] = useState([]);
     const [from, setFrom] = useState('');
     const [to, setTo] = useState('');
-    const [search, setSearch] = useState('');
+    const { input: searchInput, setInput: setSearchInput, query: search, pending: searchPending, clear: clearSearch } = useDebouncedSearch();
     const [selected, setSelected] = useState(null);
     const [showPreview, setShowPreview] = useState(false);
     const [previewKind, setPreviewKind] = useState(null); // 'pdf' | 'docx'
     const [pdfUrl, setPdfUrl] = useState(null);
     const [busy, setBusy] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [refreshKey, setRefreshKey] = useState(0);
     const previewRef = useRef(null);
 
-    const load = async () => {
-        try {
-            const r = await api.get('/reports', { params: { from, to, search, limit: 20 } });
-            setRows(r.data.data);
-        } catch {
-            toastError('No se pudo cargar el historial.');
-        }
-    };
+    const reload = () => setRefreshKey((key) => key + 1);
 
     useEffect(() => {
-        load();
+        const controller = new AbortController();
+        setLoading(true);
+
+        api.get('/reports', {
+            params: {
+                ...(from ? { from } : {}),
+                ...(to ? { to } : {}),
+                ...(search ? { search } : {}),
+                limit: 20,
+            },
+            signal: controller.signal,
+        })
+            .then((r) => setRows(r.data?.data ?? []))
+            .catch((err) => {
+                if (isCanceled(err)) return;
+                setRows([]);
+                toastError('No se pudo cargar el historial.');
+            })
+            .finally(() => {
+                if (!controller.signal.aborted) setLoading(false);
+            });
+
+        return () => controller.abort();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [search, from, to, refreshKey]);
 
     const revokePdf = () => {
         setPdfUrl((url) => {
@@ -148,7 +166,7 @@ export default function History() {
             await api.delete(`/reports/${selected.id}`);
             toastSuccess('Eliminado.');
             closeDetail();
-            load();
+            reload();
         } catch {
             toastError('No se pudo eliminar.');
         } finally {
@@ -178,12 +196,20 @@ export default function History() {
                 <div className="flex flex-wrap items-end gap-3">
                     <DatePicker label="Desde" value={from || todayLocal()} onChange={setFrom} />
                     <DatePicker label="Hasta" value={to || todayLocal()} onChange={setTo} />
-                    <Input label="Buscar" value={search} onChange={(e) => setSearch(e.target.value)} />
-                    <Button onClick={load}>Filtrar</Button>
+                    <div className="min-w-[16rem] flex-1">
+                        <span className="mb-1 block text-sm font-medium">Buscar</span>
+                        <SearchInput
+                            value={searchInput}
+                            onChange={(e) => setSearchInput(e.target.value)}
+                            onClear={clearSearch}
+                            loading={searchPending}
+                            placeholder="N° informe, dirigido a o archivo…"
+                        />
+                    </div>
                 </div>
-                <table className="table">
+                <table className="table" aria-busy={loading}>
                     <thead><tr><th>N°</th><th>Dirigido a</th><th>Modo</th><th>Periodo</th><th>Totales</th></tr></thead>
-                    <tbody>
+                    <tbody className={loading && rows.length > 0 ? 'opacity-60 transition-opacity' : ''}>
                         {rows.map((r) => (
                             <tr key={r.id} className="cursor-pointer hover:bg-stone-100 dark:hover:bg-white/5" onClick={() => openDetail(r)} title="Ver detalle">
                                 <td>{r.nroCI}</td>
@@ -195,7 +221,11 @@ export default function History() {
                         ))}
                     </tbody>
                 </table>
-                {!rows.length && <p className="text-sm text-stone-500 dark:text-wa-muted">Sin resultados.</p>}
+                {!rows.length && (
+                    <p className="text-sm text-stone-500 dark:text-wa-muted">
+                        {loading ? 'Cargando historial…' : 'Sin resultados.'}
+                    </p>
+                )}
             </div>
 
             <Modal isOpen={!!selected} onClose={closeDetail} title={selected ? `Informe ${selected.nroCI}` : ''} size="lg">

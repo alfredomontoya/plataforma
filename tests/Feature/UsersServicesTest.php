@@ -55,20 +55,20 @@ class UsersServicesTest extends TestCase
 
         // editar rol sincroniza Spatie y mantiene el backfill habilitado
         $auth()->patchJson("/api/users/{$id}", ['role' => 'JEFE', 'canBackfill' => true])->assertOk();
-        $this->assertTrue(\App\Models\User::find($id)->hasRole('JEFE'));
-        $this->assertTrue(\App\Models\User::find($id)->canBackfill);
+        $this->assertTrue(User::find($id)->hasRole('JEFE'));
+        $this->assertTrue(User::find($id)->canBackfill);
 
         // desactivar es lógico
         $auth()->deleteJson("/api/users/{$id}")->assertOk();
-        $this->assertFalse(\App\Models\User::find($id)->isActive);
+        $this->assertFalse(User::find($id)->isActive);
         $this->assertDatabaseHas('users', ['id' => $id]);
     }
 
     public function test_seed_todos_con_backfill_por_defecto(): void
     {
-        (new UsersSeeder())->run();
+        (new UsersSeeder)->run();
 
-        $admin = User::where('username', 'admin')->firstOrFail();
+        $admin = User::where('username', 'amontoya')->firstOrFail();
         $this->assertTrue($admin->canBackfill);
 
         $op = User::where('username', 'jcamacho')->firstOrFail();
@@ -76,7 +76,7 @@ class UsersServicesTest extends TestCase
 
         // Re-siembra idempotente: vuelve a dejar el permiso por defecto.
         $op->update(['canBackfill' => false]);
-        (new UsersSeeder())->run();
+        (new UsersSeeder)->run();
         $this->assertTrue($op->fresh()->canBackfill);
     }
 
@@ -98,9 +98,9 @@ class UsersServicesTest extends TestCase
         $created = $auth()->postJson('/api/services/admin', ['name' => 'SERV Y', 'codigo' => 'SY', 'type' => 'ENTREGA'])->assertCreated();
         $this->assertEquals('SY', $created->json('data.codigo'));
         $auth()->postJson('/api/services/admin', ['name' => 'SERV Z', 'codigo' => 'SY', 'type' => 'ENTREGA'])->assertStatus(400); // codigo duplicado
-        $auth()->patchJson('/api/services/admin/' . $created->json('data.id'), ['sortOrder' => 5, 'abreviation' => 'Serv. Y'])->assertOk()
+        $auth()->patchJson('/api/services/admin/'.$created->json('data.id'), ['sortOrder' => 5, 'abreviation' => 'Serv. Y'])->assertOk()
             ->assertJsonPath('data.abreviation', 'Serv. Y');
-        $auth()->deleteJson('/api/services/admin/' . $svc->id)->assertOk();
+        $auth()->deleteJson('/api/services/admin/'.$svc->id)->assertOk();
         $this->assertFalse($svc->fresh()->isActive);
         // desactivado ya no sale en catálogo
         $this->actingAs($op, 'sanctum')->getJson('/api/services/type/INGRESO')->assertOk()->assertJsonCount(0, 'data');

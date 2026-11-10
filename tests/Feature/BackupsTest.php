@@ -307,12 +307,12 @@ class BackupsTest extends TestCase
     // Entorno compartido (Desarrollo/Producción + BD) en login
     // ------------------------------------------------------------------
 
-    public function test_login_comparte_entorno_y_base_de_datos(): void
+    public function test_login_comparte_entorno_sin_exponer_base_de_datos(): void
     {
         $this->get('/login')->assertOk()->assertInertia(fn (AssertableInertia $page) => $page
             ->component('Login')
             ->has('env.name')
-            ->has('env.db')
+            ->missing('env.db')
             ->where('env.isProduction', false));
     }
 
@@ -333,9 +333,7 @@ class BackupsTest extends TestCase
  */
 class FakeBackupService extends BackupService
 {
-    public function __construct(private readonly string $base)
-    {
-    }
+    public function __construct(private readonly string $base) {}
 
     protected function configPath(): string
     {

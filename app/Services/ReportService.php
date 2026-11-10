@@ -176,7 +176,7 @@ class ReportService
                 ?? $this->trendDia($computed['totals']['daily']);
             $tp->setImageValue('GRAFICO_TENDENCIA_DIA', ['path' => $pngs['trendDia'], 'width' => 630, 'height' => 301, 'ratio' => true]);
 
-            @mkdir(dirname($outputPath), 0777, true);
+            @mkdir(dirname($outputPath), 0750, true);
             $tp->saveAs($outputPath);
         } finally {
             if ($cleanup) {

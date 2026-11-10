@@ -7,6 +7,7 @@ use App\Http\Requests\StoreTipoRegistroRequest;
 use App\Http\Requests\UpdateTipoRegistroRequest;
 use App\Models\TipoRegistro;
 use App\Support\ApiResponse;
+use App\Support\LikeSearch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -31,9 +32,9 @@ class TipoRegistroController extends Controller
         $limit = min(max((int) $request->query('limit', 20), 1), 100);
         $q = TipoRegistro::query();
 
-        if ($search = $request->query('search')) {
-            $q->where(fn ($w) => $w->where('name', 'like', "%{$search}%")
-                ->orWhere('codigo', 'like', "%{$search}%"));
+        if ($like = LikeSearch::contains($request->query('search'))) {
+            $q->where(fn ($w) => $w->where('name', 'like', $like)
+                ->orWhere('codigo', 'like', $like));
         }
 
         if ($request->query('isActive') !== null && $request->query('isActive') !== '') {

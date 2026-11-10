@@ -1,29 +1,42 @@
 import { useEffect, useState } from 'react';
-import api from '../lib/api';
+import api, { isCanceled } from '../lib/api';
+import { useDebouncedSearch } from '../hooks/useDebouncedSearch';
 import { RoleGuard } from '../components/layout/RoleGuard';
-import { Button, Input, Modal, Select } from '../components/ui/controls';
+import { Button, Input, Modal, SearchInput, Select } from '../components/ui/controls';
 import { useToast } from '../components/ui/Toast';
 
 export default function Services() {
     const { toastSuccess, toastError } = useToast();
     const [rows, setRows] = useState([]);
-    const [search, setSearch] = useState('');
+    const { input: searchInput, setInput: setSearchInput, query: search, pending: searchPending, clear: clearSearch } = useDebouncedSearch();
     const [modal, setModal] = useState(null);
     const [form, setForm] = useState({ type: 'INGRESO' });
+    const [loading, setLoading] = useState(false);
+    const [refreshKey, setRefreshKey] = useState(0);
 
-    const load = async () => {
-        try {
-            const r = await api.get('/services/admin', { params: { search, limit: 50 } });
-            setRows(r.data.data);
-        } catch {
-            toastError('No se pudo cargar servicios.');
-        }
-    };
+    const reload = () => setRefreshKey((key) => key + 1);
 
     useEffect(() => {
-        load();
+        const controller = new AbortController();
+        setLoading(true);
+
+        api.get('/services/admin', {
+            params: { ...(search ? { search } : {}), limit: 50 },
+            signal: controller.signal,
+        })
+            .then((r) => setRows(r.data?.data ?? []))
+            .catch((err) => {
+                if (isCanceled(err)) return;
+                setRows([]);
+                toastError('No se pudo cargar servicios.');
+            })
+            .finally(() => {
+                if (!controller.signal.aborted) setLoading(false);
+            });
+
+        return () => controller.abort();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [search, refreshKey]);
 
     const save = async (e) => {
         e.preventDefault();
@@ -32,7 +45,7 @@ export default function Services() {
             else await api.patch(`/services/admin/${form.id}`, form);
             setModal(null);
             toastSuccess('Guardado.');
-            load();
+            reload();
         } catch (err) {
             toastError(err.response?.data?.error || 'Error.');
         }
@@ -41,16 +54,24 @@ export default function Services() {
     return (
         <RoleGuard allowed={['ADMIN']}>
             <div className="card space-y-4 p-5">
-                <div className="flex items-end gap-3">
-                    <Input label="Buscar" value={search} onChange={(e) => setSearch(e.target.value)} />
-                    <Button onClick={load}>Filtrar</Button>
+                <div className="flex flex-wrap items-end gap-3">
+                    <div className="min-w-[16rem] flex-1">
+                        <span className="mb-1 block text-sm font-medium">Buscar</span>
+                        <SearchInput
+                            value={searchInput}
+                            onChange={(e) => setSearchInput(e.target.value)}
+                            onClear={clearSearch}
+                            loading={searchPending}
+                            placeholder="Nombre, código o abreviatura…"
+                        />
+                    </div>
                     <Button variant="secondary" onClick={() => { setForm({ type: 'INGRESO' }); setModal('new'); }}>Nuevo</Button>
                 </div>
-                <table className="table">
+                <table className="table" aria-busy={loading}>
                     <thead>
                         <tr><th>Nombre</th><th>Código</th><th>Abrev.</th><th>Tipo</th><th>Orden</th><th>Estado</th><th>Acciones</th></tr>
                     </thead>
-                    <tbody>
+                    <tbody className={loading ? 'opacity-60 transition-opacity' : ''}>
                         {rows.map((s) => (
                             <tr key={s.id}>
                                 <td>{s.name}</td>
@@ -62,10 +83,17 @@ export default function Services() {
                                 <td>
                                     <Button size="sm" variant="secondary" onClick={() => { setForm(s); setModal('show'); }}>Ver</Button>{' '}
                                     <Button size="sm" variant="secondary" onClick={() => { setForm(s); setModal('edit'); }}>Editar</Button>{' '}
-                                    <Button size="sm" variant="danger" onClick={() => api.delete(`/services/admin/${s.id}`).then(() => { toastSuccess('Desactivado.'); load(); })}>Off</Button>
+                                    <Button size="sm" variant="danger" onClick={() => api.delete(`/services/admin/${s.id}`).then(() => { toastSuccess('Desactivado.'); reload(); })}>Off</Button>
                                 </td>
                             </tr>
                         ))}
+                        {rows.length === 0 && (
+                            <tr>
+                                <td colSpan={7} className="text-sm text-stone-500 dark:text-wa-muted">
+                                    {loading ? 'Cargando…' : search ? 'Sin resultados.' : 'Sin servicios registrados.'}
+                                </td>
+                            </tr>
+                        )}
                     </tbody>
                 </table>
             </div>

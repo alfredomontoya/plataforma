@@ -217,4 +217,22 @@ class AuthTest extends TestCase
         $res->assertOk();
         $this->assertNotEmpty($res->json('data.temporaryPassword'));
     }
+
+    public function test_usuario_desactivado_no_puede_usar_su_token(): void
+    {
+        $op = $this->makeUser('inactivo1', 'OPERATOR_INGRESO');
+        $token = $op->createToken('test')->plainTextToken;
+        $op->update(['isActive' => false]);
+
+        $this->withToken($token)->getJson('/api/auth/me')->assertStatus(403);
+        $this->assertSame(0, $op->tokens()->count());
+    }
+
+    public function test_cabeceras_de_seguridad_en_respuestas_web(): void
+    {
+        $this->get('/login')
+            ->assertHeader('X-Frame-Options', 'DENY')
+            ->assertHeader('X-Content-Type-Options', 'nosniff')
+            ->assertHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    }
 }

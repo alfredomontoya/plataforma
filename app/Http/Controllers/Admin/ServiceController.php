@@ -7,6 +7,7 @@ use App\Http\Requests\CreateServiceRequest;
 use App\Http\Requests\UpdateServiceRequest;
 use App\Models\Service;
 use App\Support\ApiResponse;
+use App\Support\LikeSearch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -31,10 +32,10 @@ class ServiceController extends Controller
         $limit = min(max((int) $request->query('limit', 20), 1), 100);
         $q = Service::query()->with('entregaItems');
 
-        if ($search = $request->query('search')) {
-            $q->where(fn ($w) => $w->where('name', 'like', "%{$search}%")
-                ->orWhere('codigo', 'like', "%{$search}%")
-                ->orWhere('abreviation', 'like', "%{$search}%"));
+        if ($like = LikeSearch::contains($request->query('search'))) {
+            $q->where(fn ($w) => $w->where('name', 'like', $like)
+                ->orWhere('codigo', 'like', $like)
+                ->orWhere('abreviation', 'like', $like));
         }
         if ($request->query('type')) {
             $q->where('type', $request->query('type'));

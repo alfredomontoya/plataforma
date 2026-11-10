@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowDownTrayIcon, ChevronDownIcon, PencilSquareIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
-import api, { todayLocal } from '../lib/api';
+import api, { isCanceled, todayLocal } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { useDebouncedSearch } from '../hooks/useDebouncedSearch';
 import { saveBlob } from '../lib/reportShared';
 import { RoleGuard } from '../components/layout/RoleGuard';
 import { Combobox } from '../components/ui/Combobox';
@@ -115,10 +116,12 @@ export default function Entry() {
     const { toastSuccess, toastError } = useToast();
     const [from, setFrom] = useState(todayLocal());
     const [to, setTo] = useState(todayLocal());
-    const [searchInput, setSearchInput] = useState('');
-    const [search, setSearch] = useState('');
     const [records, setRecords] = useState([]);
     const [page, setPage] = useState(1);
+    const { input: searchInput, setInput: setSearchInput, query: search, pending: searchPending, clear: clearSearch } = useDebouncedSearch('', {
+        delay: 400,
+        onCommit: () => setPage(1),
+    });
     const [limit, setLimit] = useState(storedPageSize);
     const [total, setTotal] = useState(0);
     const [totalPages, setTotalPages] = useState(1);
@@ -159,16 +162,6 @@ export default function Entry() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Búsqueda con retardo: al aplicarse vuelve a la primera página.
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            setSearch(searchInput.trim());
-            setPage(1);
-        }, 350);
-
-        return () => clearTimeout(timer);
-    }, [searchInput]);
-
     useEffect(() => {
         if (!user) return;
 
@@ -203,7 +196,7 @@ export default function Entry() {
                 setResumenItems(payload.entregaItems ?? []);
             })
             .catch((e) => {
-                if (e.code === 'ERR_CANCELED' || e.name === 'CanceledError') return;
+                if (isCanceled(e)) return;
                 setRecords([]);
                 setTotal(0);
                 setTotalPages(1);
@@ -276,6 +269,16 @@ export default function Entry() {
 
     const canEdit = (r) => isPrivileged || r.userId === user?.id;
     const maxTipo = porTipo.reduce((max, item) => Math.max(max, item.total), 0) || 1;
+
+    // Totales por tipo de registro (ingresos, entregas y cierres).
+    const tipoTotals = useMemo(() => {
+        const totals = { INGRESO: 0, ENTREGA: 0, CIERRE: 0 };
+        for (const item of porTipo) {
+            const key = String(item.type ?? '').toUpperCase();
+            if (key in totals) totals[key] += item.total;
+        }
+        return totals;
+    }, [porTipo]);
 
     const openCreate = () => {
         const tipoId = tiposRegistro[0]?.id ?? '';
@@ -581,7 +584,8 @@ export default function Entry() {
                             <SearchInput
                                 value={searchInput}
                                 onChange={(e) => setSearchInput(e.target.value)}
-                                onClear={() => setSearchInput('')}
+                                onClear={clearSearch}
+                                loading={searchPending}
                                 placeholder="Tipo de trámite, placa/póliza, ticket, estado, observaciones o usuario…"
                             />
                         </div>
@@ -786,6 +790,19 @@ export default function Entry() {
                     </button>
 
                     <div id="resumen-por-tipo" className={`${summaryOpen ? 'block' : 'hidden'} xl:block`}>
+                        <dl className="mt-4 grid grid-cols-3 gap-2">
+                            {[
+                                { key: 'INGRESO', label: 'Ingresos', tone: 'border-primary-100 bg-primary-50 text-primary-700 dark:border-primary-500/20 dark:bg-primary-500/10 dark:text-primary-300' },
+                                { key: 'ENTREGA', label: 'Entregas', tone: 'border-green-100 bg-green-50 text-green-700 dark:border-green-500/20 dark:bg-green-500/10 dark:text-green-300' },
+                                { key: 'CIERRE', label: 'Cierres', tone: 'border-amber-100 bg-amber-50 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300' },
+                            ].map((stat) => (
+                                <div key={stat.key} className={`rounded-lg border px-2 py-1.5 ${stat.tone}`}>
+                                    <dt className="text-[10px] font-medium uppercase tracking-wide opacity-80">{stat.label}</dt>
+                                    <dd className="text-lg font-semibold tabular-nums">{tipoTotals[stat.key]}</dd>
+                                </div>
+                            ))}
+                        </dl>
+
                         {loading && porTipo.length === 0 ? (
                             <div className="mt-4 space-y-3">
                                 {[0, 1, 2].map((i) => (
@@ -800,7 +817,12 @@ export default function Entry() {
                             <ul className="mt-4 space-y-3">
                                 {porTipo.map((item) => {
                                     const pct = Math.max(4, Math.round((item.total / maxTipo) * 100));
-                                    const barColor = item.type === 'ENTREGA' ? 'bg-green-500' : 'bg-primary-500';
+                                    const tipo = String(item.type ?? '').toUpperCase();
+                                    const barColor = tipo === 'ENTREGA'
+                                        ? 'bg-green-500'
+                                        : tipo === 'CIERRE'
+                                            ? 'bg-amber-500'
+                                            : 'bg-primary-500';
 
                                     return (
                                         <li key={`${item.serviceId}-${item.tipoRegistroId ?? 'x'}`}>

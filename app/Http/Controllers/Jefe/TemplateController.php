@@ -7,6 +7,7 @@ use App\Models\Template;
 use App\Services\TemplateInspector;
 use App\Services\TemplateService;
 use App\Support\ApiResponse;
+use App\Support\LikeSearch;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,9 +21,9 @@ class TemplateController extends Controller
     {
         $limit = min(max((int) $request->query('limit', 20), 1), 100);
         $q = Template::with('uploadedBy');
-        if ($search = $request->query('search')) {
-            $q->where(fn ($w) => $w->where('name', 'like', "%{$search}%")
-                ->orWhere('fileName', 'like', "%{$search}%"));
+        if ($like = LikeSearch::contains($request->query('search'))) {
+            $q->where(fn ($w) => $w->where('name', 'like', $like)
+                ->orWhere('fileName', 'like', $like));
         }
 
         return ApiResponse::paginated($q->orderBy('created_at', 'desc')->paginate($limit));

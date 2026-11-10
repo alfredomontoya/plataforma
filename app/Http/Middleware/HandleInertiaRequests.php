@@ -2,7 +2,6 @@
 
 namespace App\Http\Middleware;
 
-use Closure;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -12,14 +11,12 @@ class HandleInertiaRequests extends Middleware
 
     public function share(Request $request): array
     {
-        $connection = (string) config('database.default');
-
         return array_merge(parent::share($request), [
-            // Entorno visible en sidebar, login y página de backups
+            // (SEC-008) Entorno visible en sidebar/login sin exponer el nombre
+            // de la base de datos ni otros detalles internos al navegador.
             'env' => [
                 'name' => app()->environment(),
                 'isProduction' => app()->environment('production'),
-                'db' => config("database.connections.{$connection}.database"),
             ],
         ]);
     }
