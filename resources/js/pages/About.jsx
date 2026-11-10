@@ -5,7 +5,7 @@ const SECTIONS = [
     {
         icon: SparklesIcon,
         title: 'Descripción',
-        text: 'Sistema web para el registro y control del ingreso y entrega de vehículos. Centraliza las operaciones de los doctores operadores, el monitoreo por parte del Jefe y la gestión de usuarios y servicios a cargo de la Administración, ofreciendo reportes y estadísticas en tiempo real.',
+        text: `${APP_NAME} es un sistema web para el registro y control del ingreso y entrega de vehículos. Centraliza las operaciones de los doctores operadores, el monitoreo por parte del Jefe y la gestión de usuarios y servicios a cargo de la Administración, ofreciendo reportes y estadísticas en tiempo real.`,
     },
     {
         icon: FlagIcon,

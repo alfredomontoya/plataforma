@@ -22,9 +22,13 @@ class SecurityHeaders
         $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
         $response->headers->set('Cross-Origin-Opener-Policy', 'same-origin');
 
-        if ($request->isSecure()) {
-            $response->headers->set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-        }
+        // HSTS desactivado durante el despliegue interno: los equipos cliente
+        // aún no tienen instalada la CA local y HSTS (por host, no por puerto)
+        // rompería los enlaces antiguos a http://splaadm23p-10:8084. Se puede
+        // reactivar cuando todos usen https://splaadm23p-10 sin puerto.
+        // if ($request->isSecure()) {
+        //     $response->headers->set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+        // }
 
         if (app()->environment('production')) {
             $csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "

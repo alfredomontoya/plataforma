@@ -23,7 +23,7 @@ class DatabaseSeeder extends Seeder
             EntregaItemSeeder::class,
             ServicesSeeder::class,
             TemplatesSeeder::class,
-            TramiteRegistroSeeder::class,
+            // TramiteRegistroSeeder::class,
         ]);
     }
 
