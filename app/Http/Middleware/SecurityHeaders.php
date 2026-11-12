@@ -22,11 +22,12 @@ class SecurityHeaders
         $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
         $response->headers->set('Cross-Origin-Opener-Policy', 'same-origin');
 
-        // HSTS: el navegador convierte http://splaadm23p-10:8084 en HTTPS.
-        // Sin includeSubDomains: no aporta nada aquí y evita efectos sobre
-        // otros nombres del dominio.
+        // HSTS desactivado en este host: splaadm23p-10 se comparte con apps
+        // HTTP en los puertos 80, 8080 y 8082. HSTS ignora el puerto y forzaría
+        // HTTPS en todas ellas (ERR_SSL_PROTOCOL_ERROR). Se emite max-age=0
+        // para que los navegadores olviden la política previa de 1 año.
         if ($request->isSecure()) {
-            $response->headers->set('Strict-Transport-Security', 'max-age=31536000');
+            $response->headers->set('Strict-Transport-Security', 'max-age=0');
         }
 
         if (app()->environment('production')) {
